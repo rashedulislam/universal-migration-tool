@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+client/node_modules/
+
+# Sensitive Data - DO NOT COMMIT
+projects.json
+projects.json.backup
+.env
+.env.local
+data/
+
+# Build outputs
+dist/
+build/
+client/dist/
+client/build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS Files
+.DS_Store
+Thumbs.db
