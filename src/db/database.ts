@@ -16,8 +16,8 @@ export const db = new Database(DB_PATH);
 // Enable foreign keys
 db.pragma('foreign_keys = ON');
 
-// Initialize schema
-export function initializeDatabase() {
+// Initialize schema FIRST
+function createSchema() {
     // Create projects table
     db.exec(`
         CREATE TABLE IF NOT EXISTS projects (
@@ -66,11 +66,19 @@ export function initializeDatabase() {
         CREATE INDEX IF NOT EXISTS idx_project_mappings_project_id 
         ON project_mappings(project_id);
     `);
+}
 
+// Create schema immediately
+createSchema();
+
+// Initialize schema
+export function initializeDatabase() {
+    // Schema already created above, this function exists for compatibility
     console.log('Database initialized successfully');
 }
 
 // Export prepared statements for better performance
+// These are created AFTER the schema exists
 export const statements = {
     // Projects
     getAllProjects: db.prepare('SELECT * FROM projects ORDER BY created_at DESC'),

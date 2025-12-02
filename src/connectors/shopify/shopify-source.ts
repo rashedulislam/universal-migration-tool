@@ -3,26 +3,28 @@ import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder }
 
 export class ShopifySource implements ISourceConnector {
     name = 'Shopify Source';
-    private shopUrl: string;
-    private accessToken: string;
     private client: AxiosInstance | null = null;
 
-    constructor(shopUrl: string, accessToken: string) {
-        this.shopUrl = shopUrl;
-        this.accessToken = accessToken;
+    constructor(private storeUrl: string, private accessToken: string) {
+        // super(); // Removed as ShopifySource does not extend a class in the provided code
+        // this.name = 'Shopify'; // Moved to property declaration
+
+        // Remove protocol if present to avoid double https://
+        const cleanUrl = storeUrl.replace(/^https?:\/\//, '');
+        this.client = axios.create({
+            baseURL: `https://${cleanUrl}/admin/api/2023-10`,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Shopify-Access-Token': accessToken,
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        });
     }
 
     async connect(): Promise<void> {
-        this.client = axios.create({
-            baseURL: `https://${this.shopUrl}/admin/api/2023-10`,
-            headers: {
-                'X-Shopify-Access-Token': this.accessToken,
-                'Content-Type': 'application/json',
-            },
-        });
         // Validate connection
         try {
-            await this.client.get('/shop.json');
+            await this.client!.get('/shop.json'); // Use non-null assertion as client is initialized in constructor
             console.log('Connected to Shopify Source.');
         } catch (error) {
             console.error('Failed to connect to Shopify:', error);

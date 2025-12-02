@@ -3,23 +3,22 @@ import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder }
 
 export class WooCommerceSource implements ISourceConnector {
     name = 'WooCommerce Source';
-    private url: string;
-    private consumerKey: string;
-    private consumerSecret: string;
     private client: AxiosInstance | null = null;
 
-    constructor(url: string, consumerKey: string, consumerSecret: string) {
-        this.url = url;
-        this.consumerKey = consumerKey;
-        this.consumerSecret = consumerSecret;
+    constructor(private url: string, private consumerKey: string, private consumerSecret: string) {
     }
 
     async connect(): Promise<void> {
+        // Remove protocol if present to avoid double https:// or missing protocol
+        const cleanUrl = this.url.replace(/^https?:\/\//, '');
         this.client = axios.create({
-            baseURL: `${this.url}/wp-json/wc/v3`,
+            baseURL: `https://${cleanUrl}/wp-json/wc/v3`,
             params: {
                 consumer_key: this.consumerKey,
                 consumer_secret: this.consumerSecret
+            },
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }
         });
         try {

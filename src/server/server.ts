@@ -7,6 +7,7 @@ import { ShopifySource } from '../connectors/shopify/shopify-source';
 import { ShopifyDestination } from '../connectors/shopify/shopify-destination';
 import { WooCommerceSource } from '../connectors/woocommerce/woocommerce-source';
 import { WooCommerceDestination } from '../connectors/woocommerce/woocommerce-destination';
+import { ISourceConnector, IDestinationConnector } from '../core/types';
 import 'dotenv/config';
 import { v4 as uuidv4 } from 'uuid';
 import { initializeDatabase } from '../db/database';
@@ -174,7 +175,8 @@ app.get('/api/projects/:id/schema', async (req, res) => {
 
     try {
         // Initialize Connectors
-        let source, destination;
+        let source: ISourceConnector;
+        let destination: IDestinationConnector;
 
         try {
             if (project.sourceType === 'shopify') {
@@ -182,6 +184,7 @@ app.get('/api/projects/:id/schema', async (req, res) => {
             } else {
                 source = new WooCommerceSource(project.config.source.url, project.config.source.auth.key, project.config.source.auth.secret);
             }
+            console.log('Source initialized:', source.constructor.name);
             await source.connect();
         } catch (err: any) {
             return res.status(400).json({ message: `Source Connection Failed: ${err.message}` });
@@ -193,9 +196,21 @@ app.get('/api/projects/:id/schema', async (req, res) => {
             } else {
                 destination = new ShopifyDestination(project.config.destination.url, project.config.destination.auth.token);
             }
+            console.log('Destination initialized:', destination.constructor.name);
             await destination.connect();
         } catch (err: any) {
             return res.status(400).json({ message: `Destination Connection Failed: ${err.message}` });
+        }
+
+        // Debug logging to check available methods
+        console.log('Source type:', source.constructor.name);
+        console.log('Source prototype:', Object.getPrototypeOf(source));
+        console.log('Source keys:', Object.keys(source));
+        
+        if (typeof source.getExportFields !== 'function') {
+             console.error('CRITICAL ERROR: source.getExportFields is not a function!');
+             console.error('Source object:', source);
+             throw new Error(`Source connector (${source.constructor.name}) does not implement getExportFields`);
         }
 
         const schema = {

@@ -3,23 +3,26 @@ import { IDestinationConnector, UniversalProduct, UniversalCustomer, UniversalOr
 
 export class ShopifyDestination implements IDestinationConnector {
     name = 'Shopify Destination';
-    private shopUrl: string;
-    private accessToken: string;
     private client: AxiosInstance | null = null;
 
-    constructor(shopUrl: string, accessToken: string) {
-        this.shopUrl = shopUrl;
-        this.accessToken = accessToken;
+    constructor(private storeUrl: string, private accessToken: string) {
+        // Remove protocol if present to avoid double https://
+        const cleanUrl = storeUrl.replace(/^https?:\/\//, '');
+        this.client = axios.create({
+            baseURL: `https://${cleanUrl}/admin/api/2023-10`,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Shopify-Access-Token': accessToken
+            }
+        });
     }
 
     async connect(): Promise<void> {
-        this.client = axios.create({
-            baseURL: `https://${this.shopUrl}/admin/api/2023-10`,
-            headers: {
-                'X-Shopify-Access-Token': this.accessToken,
-                'Content-Type': 'application/json',
-            },
-        });
+        if (!this.client) {
+            // This case should ideally not happen if constructor always initializes client
+            // but good for type safety or if constructor logic changes.
+            throw new Error('Shopify client not initialized in constructor.');
+        }
         try {
             await this.client.get('/shop.json');
             console.log('Connected to Shopify Destination.');
