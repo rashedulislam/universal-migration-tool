@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Save, Loader2 } from 'lucide-react';
+import { Save, Loader2, Trash2, Plus } from 'lucide-react';
 import axios from 'axios';
 import { useParams } from 'react-router-dom';
 
@@ -36,6 +36,82 @@ export function SettingsPage() {
   });
 
   const [isFetchingSchema, setIsFetchingSchema] = useState(false);
+  
+  // Tab State
+  const [activeTab, setActiveTab] = useState<'products' | 'customers' | 'orders'>('products');
+  const [hiddenFields, setHiddenFields] = useState<Record<string, string[]>>({
+    products: [], customers: [], orders: []
+  });
+  const [customFields, setCustomFields] = useState<Record<string, string[]>>({
+    products: [], customers: [], orders: []
+  });
+  const [newField, setNewField] = useState('');
+
+  // Helper to get all fields to display (Schema + Custom - Hidden)
+  const getDisplayFields = (entity: 'products' | 'customers' | 'orders') => {
+    const schemaFields = schema[entity]?.destination || [];
+    const mappedFields = project?.mapping?.[entity]?.fields ? Object.keys(project.mapping[entity].fields) : [];
+    const custom = customFields[entity] || [];
+    
+    // Union of all potential fields
+    const allFields = Array.from(new Set([...schemaFields, ...mappedFields, ...custom]));
+    
+    // Filter out hidden fields
+    return allFields.filter(f => !hiddenFields[entity]?.includes(f));
+  };
+
+  const removeField = (entity: 'products' | 'customers' | 'orders', field: string) => {
+    // Add to hidden fields
+    setHiddenFields(prev => ({
+      ...prev,
+      [entity]: [...(prev[entity] || []), field]
+    }));
+    
+    // Clear mapping
+    updateMapping(entity, field, '');
+  };
+
+  const addField = (entity: 'products' | 'customers' | 'orders') => {
+    if (!newField.trim()) return;
+    
+    // If it was hidden, unhide it
+    if (hiddenFields[entity]?.includes(newField)) {
+      setHiddenFields(prev => ({
+        ...prev,
+        [entity]: prev[entity].filter(f => f !== newField)
+      }));
+    } else {
+      // Add to custom fields
+      setCustomFields(prev => ({
+        ...prev,
+        [entity]: [...(prev[entity] || []), newField]
+      }));
+    }
+    setNewField('');
+  };
+
+  const updateMapping = (entity: 'products' | 'customers' | 'orders', destField: string, srcField: string) => {
+    if (!project) return;
+    const currentMapping = project.mapping || {
+      products: { enabled: true, fields: {} },
+      customers: { enabled: true, fields: {} },
+      orders: { enabled: true, fields: {} }
+    };
+    
+    setProject({ 
+      ...project, 
+      mapping: {
+        ...currentMapping,
+        [entity]: {
+          ...currentMapping[entity],
+          fields: {
+            ...currentMapping[entity].fields,
+            [destField]: srcField
+          }
+        }
+      }
+    });
+  };
 
   useEffect(() => {
     if (projectId) {
@@ -241,93 +317,121 @@ export function SettingsPage() {
             </div>
           </div>
 
-          <div className="space-y-8">
+          {/* Tabs */}
+          <div className="flex gap-2 mb-6 border-b border-gray-700">
             {['products', 'customers', 'orders'].map((entity) => (
-              <div key={entity} className="bg-gray-900 p-4 rounded-lg border border-gray-700">
-                <div className="flex items-center justify-between mb-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={project.mapping?.[entity as keyof typeof project.mapping]?.enabled ?? true}
-                      onChange={e => {
-                        const currentMapping = project.mapping || {
-                          products: { enabled: true, fields: {} },
-                          customers: { enabled: true, fields: {} },
-                          orders: { enabled: true, fields: {} }
-                        };
-                        const entityKey = entity as keyof typeof currentMapping;
-                        
-                        setProject({ 
-                          ...project, 
-                          mapping: {
-                            ...currentMapping,
-                            [entityKey]: {
-                              ...currentMapping[entityKey],
-                              enabled: e.target.checked
-                            }
-                          }
-                        });
-                      }}
-                      className="w-5 h-5 rounded border-gray-600 text-blue-600 focus:ring-blue-500 bg-gray-900"
-                    />
-                    <span className="text-lg font-medium text-white capitalize">{entity}</span>
-                  </label>
-                </div>
+              <button
+                key={entity}
+                type="button"
+                onClick={() => setActiveTab(entity as any)}
+                className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors capitalize ${
+                  activeTab === entity
+                    ? 'bg-gray-900 text-blue-400 border-t border-x border-gray-700'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                }`}
+              >
+                {entity}
+              </button>
+            ))}
+          </div>
 
-                {project.mapping?.[entity as keyof typeof project.mapping]?.enabled && (
-                  <div className="pl-7 space-y-3">
-                    {schema[entity as keyof typeof schema]?.destination.length > 0 ? (
-                      schema[entity as keyof typeof schema].destination.map((destField: string) => (
-                        <div key={destField} className="flex items-center gap-4">
-                          <div className="w-1/3 text-sm text-gray-400 text-right">{destField}</div>
-                          <div className="text-gray-500">←</div>
-                          <div className="w-1/2">
-                            <select
-                              value={project.mapping?.[entity as keyof typeof project.mapping]?.fields?.[destField] || ''}
-                              onChange={e => {
-                                const currentMapping = project.mapping || {
-                                  products: { enabled: true, fields: {} },
-                                  customers: { enabled: true, fields: {} },
-                                  orders: { enabled: true, fields: {} }
-                                };
-                                const entityKey = entity as keyof typeof currentMapping;
-                                const currentFields = currentMapping[entityKey].fields || {};
+          {/* Mapping Content */}
+          <div className="bg-gray-900 p-6 rounded-lg border border-gray-700 min-h-[400px]">
+            <div className="flex items-center justify-between mb-6">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={project.mapping?.[activeTab]?.enabled ?? true}
+                  onChange={e => {
+                    const currentMapping = project.mapping || {
+                      products: { enabled: true, fields: {} },
+                      customers: { enabled: true, fields: {} },
+                      orders: { enabled: true, fields: {} }
+                    };
+                    
+                    setProject({ 
+                      ...project, 
+                      mapping: {
+                        ...currentMapping,
+                        [activeTab]: {
+                          ...currentMapping[activeTab],
+                          enabled: e.target.checked
+                        }
+                      }
+                    });
+                  }}
+                  className="w-5 h-5 rounded border-gray-600 text-blue-600 focus:ring-blue-500 bg-gray-900"
+                />
+                <span className="text-lg font-medium text-white capitalize">Enable {activeTab} Migration</span>
+              </label>
+            </div>
 
-                                setProject({ 
-                                  ...project, 
-                                  mapping: {
-                                    ...currentMapping,
-                                    [entityKey]: {
-                                      ...currentMapping[entityKey],
-                                      fields: {
-                                        ...currentFields,
-                                        [destField]: e.target.value
-                                      }
-                                    }
-                                  }
-                                });
-                              }}
-                              className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-1 text-white text-sm focus:ring-1 focus:ring-blue-500 outline-none"
-                            >
-                              <option value="">(Skip / Default)</option>
-                              {schema[entity as keyof typeof schema]?.source.map((srcField: string) => (
-                                <option key={srcField} value={srcField}>{srcField}</option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-sm text-gray-500 italic">
-                        {project.config.source.url && project.config.destination.url 
-                          ? "Click 'Refresh Schema' to load fields." 
-                          : "Configure Source and Destination first."}
+            {project.mapping?.[activeTab]?.enabled && (
+              <div className="space-y-3">
+                {getDisplayFields(activeTab).length > 0 ? (
+                  getDisplayFields(activeTab).map((destField) => (
+                    <div key={destField} className="flex items-center gap-4 group">
+                      <div className="w-1/3 text-sm text-gray-400 text-right font-mono">{destField}</div>
+                      <div className="text-gray-500">←</div>
+                      <div className="w-1/2">
+                        <select
+                          value={project.mapping?.[activeTab]?.fields?.[destField] || ''}
+                          onChange={e => updateMapping(activeTab, destField, e.target.value)}
+                          className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:ring-1 focus:ring-blue-500 outline-none"
+                        >
+                          <option value="">(Skip / Default)</option>
+                          {schema[activeTab]?.source.map((srcField: string) => (
+                            <option key={srcField} value={srcField}>{srcField}</option>
+                          ))}
+                        </select>
                       </div>
-                    )}
+                      <button
+                        type="button"
+                        onClick={() => removeField(activeTab, destField)}
+                        className="text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Remove field"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-gray-500 italic">
+                    No fields visible. Add a field to start mapping.
                   </div>
                 )}
+
+                {/* Add Field Row */}
+                <div className="mt-6 pt-4 border-t border-gray-800 flex items-center gap-4">
+                  <div className="w-1/3 flex justify-end">
+                    <input
+                      type="text"
+                      placeholder="New destination field..."
+                      value={newField}
+                      onChange={e => setNewField(e.target.value)}
+                      className="bg-gray-800 border border-gray-600 rounded px-3 py-1 text-white text-sm focus:ring-1 focus:ring-green-500 outline-none w-48 text-right"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addField(activeTab);
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="text-gray-500">←</div>
+                  <div className="w-1/2">
+                    <button
+                      type="button"
+                      onClick={() => addField(activeTab)}
+                      className="text-sm text-green-400 hover:text-green-300 flex items-center gap-1"
+                    >
+                      <Plus size={16} />
+                      Add Field
+                    </button>
+                  </div>
+                </div>
               </div>
-            ))}
+            )}
           </div>
         </div>
 

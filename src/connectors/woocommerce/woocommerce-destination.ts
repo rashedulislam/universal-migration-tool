@@ -148,11 +148,19 @@ export class WooCommerceDestination implements IDestinationConnector {
         // Return standard WooCommerce fields for import
         switch (entityType) {
             case 'products':
-                return ['name', 'type', 'regular_price', 'description', 'short_description', 'sku', 'images', 'categories', 'tags'];
+                return [
+                    'name', 'type', 'regular_price', 'sale_price', 'description', 'short_description', 
+                    'sku', 'images', 'categories', 'tags', 'weight', 'dimensions', 'manage_stock', 
+                    'stock_quantity', 'status', 'catalog_visibility', 'reviews_allowed', 'attributes', 
+                    'default_attributes', 'menu_order', 'slug', 'date_created', 'date_modified'
+                ];
             case 'customers':
-                return ['email', 'first_name', 'last_name', 'username', 'billing', 'shipping'];
+                return ['email', 'first_name', 'last_name', 'username', 'billing', 'shipping', 'role'];
             case 'orders':
-                return ['status', 'currency', 'billing', 'shipping', 'line_items', 'payment_method', 'payment_method_title'];
+                return [
+                    'status', 'currency', 'billing', 'shipping', 'line_items', 'payment_method', 
+                    'payment_method_title', 'transaction_id', 'customer_note', 'date_created'
+                ];
             default:
                 return [];
         }

@@ -150,11 +150,18 @@ export class ShopifyDestination implements IDestinationConnector {
         // Return standard Shopify fields for import
         switch (entityType) {
             case 'products':
-                return ['title', 'body_html', 'vendor', 'product_type', 'tags', 'variants', 'images'];
+                return [
+                    'title', 'body_html', 'vendor', 'product_type', 'tags', 'variants', 'images', 
+                    'options', 'weight', 'weight_unit', 'inventory_quantity', 'requires_shipping', 
+                    'taxable', 'published', 'handle', 'template_suffix', 'metafields'
+                ];
             case 'customers':
-                return ['first_name', 'last_name', 'email', 'phone', 'addresses', 'tags'];
+                return ['first_name', 'last_name', 'email', 'phone', 'addresses', 'tags', 'note', 'verified', 'tax_exempt'];
             case 'orders':
-                return ['email', 'fulfillment_status', 'line_items', 'billing_address', 'shipping_address', 'financial_status'];
+                return [
+                    'email', 'fulfillment_status', 'line_items', 'billing_address', 'shipping_address', 
+                    'financial_status', 'note', 'tags', 'processed_at', 'currency'
+                ];
             default:
                 return [];
         }
