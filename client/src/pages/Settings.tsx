@@ -113,108 +113,110 @@ export function SettingsPage() {
 
   return (
     <div>
-      <h2 className="text-3xl font-bold text-white mb-8">Configuration: {project.name}</h2>
 
-      <form onSubmit={handleSave} className="space-y-8 max-w-2xl">
-        {/* Source Section */}
-        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-          <h3 className="text-xl font-semibold text-blue-400 mb-4 border-b border-gray-700 pb-2 capitalize">
-            Source: {project.sourceType}
-          </h3>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-1">URL</label>
-              <input
-                type="text"
-                value={project.config.source.url}
-                onChange={e => updateConfig('source', 'url', e.target.value)}
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-blue-500"
-              />
-            </div>
-            {project.sourceType === 'shopify' && (
+
+      <form onSubmit={handleSave} className="space-y-8 max-w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Source Section */}
+          <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 h-full">
+            <h3 className="text-xl font-semibold text-blue-400 mb-4 border-b border-gray-700 pb-2 capitalize">
+              Source: {project.sourceType}
+            </h3>
+            <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Access Token</label>
+                <label className="block text-sm font-medium text-gray-400 mb-1">URL</label>
                 <input
-                  type="password"
-                  value={project.config.source.auth.token || ''}
-                  onChange={e => updateConfig('source', 'token', e.target.value)}
+                  type="text"
+                  value={project.config.source.url}
+                  onChange={e => updateConfig('source', 'url', e.target.value)}
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-blue-500"
                 />
               </div>
-            )}
-            {project.sourceType === 'woocommerce' && (
-              <>
+              {project.sourceType === 'shopify' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">Consumer Key</label>
-                  <input
-                    type="text"
-                    value={project.config.source.auth.key || ''}
-                    onChange={e => updateConfig('source', 'key', e.target.value)}
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">Consumer Secret</label>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Access Token</label>
                   <input
                     type="password"
-                    value={project.config.source.auth.secret || ''}
-                    onChange={e => updateConfig('source', 'secret', e.target.value)}
+                    value={project.config.source.auth.token || ''}
+                    onChange={e => updateConfig('source', 'token', e.target.value)}
                     className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-blue-500"
                   />
                 </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Destination Section */}
-        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-          <h3 className="text-xl font-semibold text-purple-400 mb-4 border-b border-gray-700 pb-2 capitalize">
-            Destination: {project.destType}
-          </h3>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-1">URL</label>
-              <input
-                type="text"
-                value={project.config.destination.url}
-                onChange={e => updateConfig('destination', 'url', e.target.value)}
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-purple-500"
-              />
+              )}
+              {project.sourceType === 'woocommerce' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-1">Consumer Key</label>
+                    <input
+                      type="text"
+                      value={project.config.source.auth.key || ''}
+                      onChange={e => updateConfig('source', 'key', e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-1">Consumer Secret</label>
+                    <input
+                      type="password"
+                      value={project.config.source.auth.secret || ''}
+                      onChange={e => updateConfig('source', 'secret', e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </>
+              )}
             </div>
-            {project.destType === 'shopify' && (
+          </div>
+
+          {/* Destination Section */}
+          <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 h-full">
+            <h3 className="text-xl font-semibold text-purple-400 mb-4 border-b border-gray-700 pb-2 capitalize">
+              Destination: {project.destType}
+            </h3>
+            <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Access Token</label>
+                <label className="block text-sm font-medium text-gray-400 mb-1">URL</label>
                 <input
-                  type="password"
-                  value={project.config.destination.auth.token || ''}
-                  onChange={e => updateConfig('destination', 'token', e.target.value)}
+                  type="text"
+                  value={project.config.destination.url}
+                  onChange={e => updateConfig('destination', 'url', e.target.value)}
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-purple-500"
                 />
               </div>
-            )}
-            {project.destType === 'woocommerce' && (
-              <>
+              {project.destType === 'shopify' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">Consumer Key</label>
-                  <input
-                    type="text"
-                    value={project.config.destination.auth.key || ''}
-                    onChange={e => updateConfig('destination', 'key', e.target.value)}
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-purple-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">Consumer Secret</label>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Access Token</label>
                   <input
                     type="password"
-                    value={project.config.destination.auth.secret || ''}
-                    onChange={e => updateConfig('destination', 'secret', e.target.value)}
+                    value={project.config.destination.auth.token || ''}
+                    onChange={e => updateConfig('destination', 'token', e.target.value)}
                     className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-purple-500"
                   />
                 </div>
-              </>
-            )}
+              )}
+              {project.destType === 'woocommerce' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-1">Consumer Key</label>
+                    <input
+                      type="text"
+                      value={project.config.destination.auth.key || ''}
+                      onChange={e => updateConfig('destination', 'key', e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-1">Consumer Secret</label>
+                    <input
+                      type="password"
+                      value={project.config.destination.auth.secret || ''}
+                      onChange={e => updateConfig('destination', 'secret', e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-purple-500"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 

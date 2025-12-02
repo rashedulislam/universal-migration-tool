@@ -56,7 +56,7 @@ export function SidebarLayout() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto">
-        <div className="p-8 max-w-6xl mx-auto">
+        <div className="px-4 py-0 w-full">
           <Outlet />
         </div>
       </main>
