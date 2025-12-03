@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder } from '../../core/types';
+import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder, UniversalPost, UniversalPage } from '../../core/types';
 
 export class WooCommerceSource implements ISourceConnector {
     name = 'WooCommerce Source';
@@ -95,14 +95,74 @@ export class WooCommerceSource implements ISourceConnector {
         }));
     }
 
-    async getExportFields(entityType: 'products' | 'customers' | 'orders'): Promise<string[]> {
+    async getPosts(): Promise<UniversalPost[]> {
         if (!this.client) throw new Error('Not connected');
         
-        const endpoint = `/${entityType}?per_page=1`;
-        const response = await this.client.get(endpoint);
+        // Use _embed to get author details
+        const response = await this.client.get('/wp/v2/posts?_embed');
+        const posts = response.data;
+
+        return posts.map((post: any) => {
+            const authorName = post._embedded?.author?.[0]?.name || 'Unknown';
+            return {
+                originalId: post.id.toString(),
+                title: post.title.rendered,
+                content: post.content.rendered,
+                slug: post.slug,
+                status: post.status,
+                authorId: post.author.toString(),
+                authorName: authorName,
+                categories: post.categories.map((c: number) => c.toString()),
+                tags: post.tags.map((t: number) => t.toString()),
+                featuredImage: post.featured_media ? post.featured_media.toString() : undefined,
+                createdAt: new Date(post.date),
+                updatedAt: new Date(post.modified),
+                originalData: post
+            };
+        });
+    }
+
+    async getPages(): Promise<UniversalPage[]> {
+        if (!this.client) throw new Error('Not connected');
         
-        if (response.data && response.data.length > 0) {
-            return Object.keys(response.data[0]);
+        // Use _embed to get author details
+        const response = await this.client.get('/wp/v2/pages?_embed');
+        const pages = response.data;
+
+        return pages.map((page: any) => {
+            const authorName = page._embedded?.author?.[0]?.name || 'Unknown';
+            return {
+                originalId: page.id.toString(),
+                title: page.title.rendered,
+                content: page.content.rendered,
+                slug: page.slug,
+                status: page.status,
+                authorId: page.author.toString(),
+                authorName: authorName,
+                createdAt: new Date(page.date),
+                updatedAt: new Date(page.modified),
+                originalData: page
+            };
+        });
+    }
+
+    async getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages'): Promise<string[]> {
+        if (!this.client) throw new Error('Not connected');
+        
+        let endpoint = '';
+        switch (entityType) {
+            case 'products': endpoint = '/wc/v3/products?per_page=1'; break;
+            case 'customers': endpoint = '/wc/v3/customers?per_page=1'; break;
+            case 'orders': endpoint = '/wc/v3/orders?per_page=1'; break;
+            case 'posts': endpoint = '/wp/v2/posts?per_page=1'; break;
+            case 'pages': endpoint = '/wp/v2/pages?per_page=1'; break;
+        }
+        
+        const response = await this.client.get(endpoint);
+        const items = response.data;
+        
+        if (items && items.length > 0) {
+            return Object.keys(items[0]);
         }
         return [];
     }

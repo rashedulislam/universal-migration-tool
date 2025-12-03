@@ -13,6 +13,8 @@ export class MigrationManager {
         products?: boolean | { enabled: boolean; fields: Record<string, string> }; 
         customers?: boolean | { enabled: boolean; fields: Record<string, string> }; 
         orders?: boolean | { enabled: boolean; fields: Record<string, string> }; 
+        posts?: boolean | { enabled: boolean; fields: Record<string, string> }; 
+        pages?: boolean | { enabled: boolean; fields: Record<string, string> }; 
     }) {
         console.log(`Starting migration from ${this.source.name} to ${this.destination.name}...`);
 
@@ -33,6 +35,14 @@ export class MigrationManager {
 
             if (isEnabled(options.orders)) {
                 await this.migrateOrders(getMapping(options.orders));
+            }
+
+            if (isEnabled(options.posts)) {
+                await this.migratePosts(getMapping(options.posts));
+            }
+
+            if (isEnabled(options.pages)) {
+                await this.migratePages(getMapping(options.pages));
             }
 
             console.log('Migration completed successfully.');
@@ -102,6 +112,46 @@ export class MigrationManager {
         console.log('Importing orders to destination...');
         const results = await this.destination.importOrders(orders);
         this.logResults('Orders', results);
+    }
+
+    private async migratePosts(mapping: Record<string, string> = {}) {
+        console.log('Fetching posts from source...');
+        const posts = await this.source.getPosts();
+        console.log(`Fetched ${posts.length} posts.`);
+
+        // Apply Mapping
+        posts.forEach(p => {
+            p.mappedFields = {};
+            for (const [destField, srcField] of Object.entries(mapping)) {
+                if (p.originalData && p.originalData[srcField] !== undefined) {
+                    p.mappedFields[destField] = p.originalData[srcField];
+                }
+            }
+        });
+
+        console.log('Importing posts to destination...');
+        const results = await this.destination.importPosts(posts);
+        this.logResults('Posts', results);
+    }
+
+    private async migratePages(mapping: Record<string, string> = {}) {
+        console.log('Fetching pages from source...');
+        const pages = await this.source.getPages();
+        console.log(`Fetched ${pages.length} pages.`);
+
+        // Apply Mapping
+        pages.forEach(p => {
+            p.mappedFields = {};
+            for (const [destField, srcField] of Object.entries(mapping)) {
+                if (p.originalData && p.originalData[srcField] !== undefined) {
+                    p.mappedFields[destField] = p.originalData[srcField];
+                }
+            }
+        });
+
+        console.log('Importing pages to destination...');
+        const results = await this.destination.importPages(pages);
+        this.logResults('Pages', results);
     }
 
     private logResults(entity: string, results: ImportResult[]) {

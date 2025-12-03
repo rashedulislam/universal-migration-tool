@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { IDestinationConnector, UniversalProduct, UniversalCustomer, UniversalOrder, ImportResult } from '../../core/types';
+import { IDestinationConnector, UniversalProduct, UniversalCustomer, UniversalOrder, ImportResult, UniversalPost, UniversalPage } from '../../core/types';
 
 export class ShopifyDestination implements IDestinationConnector {
     name = 'Shopify Destination';
@@ -146,7 +146,73 @@ export class ShopifyDestination implements IDestinationConnector {
         }
         return results;
     }
-    async getImportFields(entityType: 'products' | 'customers' | 'orders'): Promise<string[]> {
+    async importPosts(posts: UniversalPost[]): Promise<ImportResult[]> {
+        if (!this.client) throw new Error('Not connected');
+
+        // 1. Find or create a Blog to attach articles to
+        let blogId: number;
+        const blogsRes = await this.client.get('/blogs.json');
+        const blogs = blogsRes.data.blogs;
+        
+        if (blogs.length > 0) {
+            blogId = blogs[0].id;
+        } else {
+            // Create a default blog
+            const newBlog = await this.client.post('/blogs.json', {
+                blog: { title: 'Imported Posts' }
+            });
+            blogId = newBlog.data.blog.id;
+        }
+
+        const results: ImportResult[] = [];
+        for (const post of posts) {
+            try {
+                const articleData: any = {
+                    title: post.title,
+                    body_html: post.content,
+                    author: post.authorName || 'Imported Author', // Use name, fallback to default
+                    tags: post.tags?.join(', '),
+                    published_at: post.status === 'publish' ? new Date().toISOString() : null,
+                    // handle: post.slug // Shopify handles are auto-generated or strict
+                };
+                
+                if (post.featuredImage) {
+                    articleData.image = { src: post.featuredImage };
+                }
+
+                const res = await this.client.post(`/blogs/${blogId}/articles.json`, { article: articleData });
+                results.push({ success: true, originalId: post.originalId, newId: res.data.article.id.toString() });
+            } catch (error: any) {
+                results.push({ success: false, originalId: post.originalId, error: error.message });
+            }
+        }
+        return results;
+    }
+
+    async importPages(pages: UniversalPage[]): Promise<ImportResult[]> {
+        if (!this.client) throw new Error('Not connected');
+
+        const results: ImportResult[] = [];
+        for (const page of pages) {
+            try {
+                const pageData = {
+                    title: page.title,
+                    body_html: page.content,
+                    author: page.authorName || 'Imported Author', // Use name, fallback to default
+                    published: page.status === 'publish',
+                    // handle: page.slug
+                };
+
+                const res = await this.client.post('/pages.json', { page: pageData });
+                results.push({ success: true, originalId: page.originalId, newId: res.data.page.id.toString() });
+            } catch (error: any) {
+                results.push({ success: false, originalId: page.originalId, error: error.message });
+            }
+        }
+        return results;
+    }
+
+    async getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages'): Promise<string[]> {
         // Return standard Shopify fields for import
         switch (entityType) {
             case 'products':
@@ -162,6 +228,10 @@ export class ShopifyDestination implements IDestinationConnector {
                     'email', 'fulfillment_status', 'line_items', 'billing_address', 'shipping_address', 
                     'financial_status', 'note', 'tags', 'processed_at', 'currency'
                 ];
+            case 'posts':
+                return ['title', 'body_html', 'author', 'tags', 'summary_html', 'published_at', 'handle', 'image'];
+            case 'pages':
+                return ['title', 'body_html', 'author', 'published', 'handle', 'template_suffix'];
             default:
                 return [];
         }

@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { IDestinationConnector, UniversalProduct, UniversalCustomer, UniversalOrder, ImportResult } from '../../core/types';
+import { IDestinationConnector, UniversalProduct, UniversalCustomer, UniversalOrder, ImportResult, UniversalPost, UniversalPage } from '../../core/types';
 
 export class WooCommerceDestination implements IDestinationConnector {
     name = 'WooCommerce Destination';
@@ -144,7 +144,59 @@ export class WooCommerceDestination implements IDestinationConnector {
         }
         return results;
     }
-    async getImportFields(entityType: 'products' | 'customers' | 'orders'): Promise<string[]> {
+    async importPosts(posts: UniversalPost[]): Promise<ImportResult[]> {
+        if (!this.client) throw new Error('Not connected');
+
+        const results: ImportResult[] = [];
+        for (const post of posts) {
+            try {
+                const postData: any = {
+                    title: post.title,
+                    content: post.content,
+                    slug: post.slug,
+                    status: post.status,
+                    // author: post.authorId, // Need to map author ID or use default
+                    categories: post.categories, // Need to map category IDs
+                    tags: post.tags, // Need to map tag IDs
+                    date: post.createdAt.toISOString()
+                };
+
+                const res = await this.client.post('/wp/v2/posts', postData);
+                results.push({ success: true, originalId: post.originalId, newId: res.data.id.toString() });
+            } catch (error: any) {
+                results.push({ success: false, originalId: post.originalId, error: error.message });
+            }
+        }
+        return results;
+    }
+
+    async importPages(pages: UniversalPage[]): Promise<ImportResult[]> {
+        if (!this.client) throw new Error('Not connected');
+
+        const results: ImportResult[] = [];
+        for (const page of pages) {
+            try {
+                const pageData = {
+                    title: page.title,
+                    content: page.content,
+                    slug: page.slug,
+                    status: page.status,
+                    // author: page.authorId,
+                    date: page.createdAt.toISOString()
+                };
+
+                const res = await this.client.post('/wp/v2/pages', pageData);
+                results.push({ success: true, originalId: page.originalId, newId: res.data.id.toString() });
+            } catch (error: any) {
+                results.push({ success: false, originalId: page.originalId, error: error.message });
+            }
+        }
+        return results;
+    }
+
+    async getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages'): Promise<string[]> {
+        if (!this.client) throw new Error('Not connected');
+
         // Return standard WooCommerce fields for import
         switch (entityType) {
             case 'products':
@@ -161,6 +213,10 @@ export class WooCommerceDestination implements IDestinationConnector {
                     'status', 'currency', 'billing', 'shipping', 'line_items', 'payment_method', 
                     'payment_method_title', 'transaction_id', 'customer_note', 'date_created'
                 ];
+            case 'posts':
+                return ['title', 'content', 'slug', 'status', 'author', 'categories', 'tags', 'date', 'featured_media'];
+            case 'pages':
+                return ['title', 'content', 'slug', 'status', 'author', 'date', 'parent'];
             default:
                 return [];
         }

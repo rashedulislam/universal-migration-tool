@@ -6,16 +6,18 @@ import { useParams } from 'react-router-dom';
 interface Project {
   id: string;
   name: string;
-  sourceType: string;
-  destType: string;
+  sourceType: 'shopify' | 'woocommerce';
+  destType: 'shopify' | 'woocommerce';
   config: {
     source: { url: string; auth: any };
     destination: { url: string; auth: any };
   };
-  mapping?: {
+  mapping: {
     products: { enabled: boolean; fields: Record<string, string> };
     customers: { enabled: boolean; fields: Record<string, string> };
     orders: { enabled: boolean; fields: Record<string, string> };
+    posts: { enabled: boolean; fields: Record<string, string> };
+    pages: { enabled: boolean; fields: Record<string, string> };
   };
 }
 
@@ -32,23 +34,25 @@ export function SettingsPage() {
   }>({
     products: { source: [], destination: [] },
     customers: { source: [], destination: [] },
-    orders: { source: [], destination: [] }
+    orders: { source: [], destination: [] },
+    posts: { source: [], destination: [] },
+    pages: { source: [], destination: [] }
   });
 
   const [isFetchingSchema, setIsFetchingSchema] = useState(false);
   
   // Tab State
-  const [activeTab, setActiveTab] = useState<'products' | 'customers' | 'orders'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'customers' | 'orders' | 'posts' | 'pages'>('products');
   const [hiddenFields, setHiddenFields] = useState<Record<string, string[]>>({
-    products: [], customers: [], orders: []
+    products: [], customers: [], orders: [], posts: [], pages: []
   });
   const [customFields, setCustomFields] = useState<Record<string, string[]>>({
-    products: [], customers: [], orders: []
+    products: [], customers: [], orders: [], posts: [], pages: []
   });
   const [newField, setNewField] = useState('');
 
   // Helper to get all fields to display (Schema + Custom - Hidden)
-  const getDisplayFields = (entity: 'products' | 'customers' | 'orders') => {
+  const getDisplayFields = (entity: 'products' | 'customers' | 'orders' | 'posts' | 'pages') => {
     const schemaFields = schema[entity]?.destination || [];
     const mappedFields = project?.mapping?.[entity]?.fields ? Object.keys(project.mapping[entity].fields) : [];
     const custom = customFields[entity] || [];
@@ -60,7 +64,7 @@ export function SettingsPage() {
     return allFields.filter(f => !hiddenFields[entity]?.includes(f));
   };
 
-  const removeField = (entity: 'products' | 'customers' | 'orders', field: string) => {
+  const removeField = (entity: 'products' | 'customers' | 'orders' | 'posts' | 'pages', field: string) => {
     // Add to hidden fields
     setHiddenFields(prev => ({
       ...prev,
@@ -71,7 +75,7 @@ export function SettingsPage() {
     updateMapping(entity, field, '');
   };
 
-  const addField = (entity: 'products' | 'customers' | 'orders') => {
+  const addField = (entity: 'products' | 'customers' | 'orders' | 'posts' | 'pages') => {
     if (!newField.trim()) return;
     
     // If it was hidden, unhide it
@@ -90,12 +94,14 @@ export function SettingsPage() {
     setNewField('');
   };
 
-  const updateMapping = (entity: 'products' | 'customers' | 'orders', destField: string, srcField: string) => {
+  const updateMapping = (entity: 'products' | 'customers' | 'orders' | 'posts' | 'pages', destField: string, srcField: string) => {
     if (!project) return;
     const currentMapping = project.mapping || {
       products: { enabled: true, fields: {} },
       customers: { enabled: true, fields: {} },
-      orders: { enabled: true, fields: {} }
+      orders: { enabled: true, fields: {} },
+      posts: { enabled: true, fields: {} },
+      pages: { enabled: true, fields: {} }
     };
     
     setProject({ 
@@ -158,11 +164,13 @@ export function SettingsPage() {
         newProject.mapping = {
           products: { enabled: true, fields: {} },
           customers: { enabled: true, fields: {} },
-          orders: { enabled: true, fields: {} }
+          orders: { enabled: true, fields: {} },
+          posts: { enabled: true, fields: {} },
+          pages: { enabled: true, fields: {} }
         };
       }
 
-      (['products', 'customers', 'orders'] as const).forEach(entity => {
+      (['products', 'customers', 'orders', 'posts', 'pages'] as const).forEach(entity => {
         const destFields = newSchema[entity]?.destination || [];
         // Initialize entity mapping if missing
         if (!newProject.mapping![entity]) {
@@ -199,8 +207,7 @@ export function SettingsPage() {
     }
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = async () => {
     if (!project) return;
 
     setSaving(true);
@@ -239,7 +246,7 @@ export function SettingsPage() {
     <div>
 
 
-      <form onSubmit={handleSave} className="space-y-8 max-w-full">
+      <form className="space-y-8 max-w-full" onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Source Section */}
           <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 h-full">
@@ -252,7 +259,7 @@ export function SettingsPage() {
                 <input
                   type="text"
                   value={project.config.source.url}
-                  onChange={e => updateConfig('source', 'url', e.target.value)}
+                  onChange={e => setProject({ ...project, config: { ...project.config, source: { ...project.config.source, url: e.target.value } } })}
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-blue-500"
                 />
               </div>
@@ -262,7 +269,7 @@ export function SettingsPage() {
                   <input
                     type="password"
                     value={project.config.source.auth.token || ''}
-                    onChange={e => updateConfig('source', 'token', e.target.value)}
+                    onChange={e => setProject({ ...project, config: { ...project.config, source: { ...project.config.source, auth: { ...project.config.source.auth, token: e.target.value } } } })}
                     className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-blue-500"
                   />
                 </div>
@@ -274,7 +281,7 @@ export function SettingsPage() {
                     <input
                       type="text"
                       value={project.config.source.auth.key || ''}
-                      onChange={e => updateConfig('source', 'key', e.target.value)}
+                      onChange={e => setProject({ ...project, config: { ...project.config, source: { ...project.config.source, auth: { ...project.config.source.auth, key: e.target.value } } } })}
                       className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-blue-500"
                     />
                   </div>
@@ -283,7 +290,7 @@ export function SettingsPage() {
                     <input
                       type="password"
                       value={project.config.source.auth.secret || ''}
-                      onChange={e => updateConfig('source', 'secret', e.target.value)}
+                      onChange={e => setProject({ ...project, config: { ...project.config, source: { ...project.config.source, auth: { ...project.config.source.auth, secret: e.target.value } } } })}
                       className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-blue-500"
                     />
                   </div>
@@ -303,7 +310,7 @@ export function SettingsPage() {
                 <input
                   type="text"
                   value={project.config.destination.url}
-                  onChange={e => updateConfig('destination', 'url', e.target.value)}
+                  onChange={e => setProject({ ...project, config: { ...project.config, destination: { ...project.config.destination, url: e.target.value } } })}
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-purple-500"
                 />
               </div>
@@ -313,7 +320,7 @@ export function SettingsPage() {
                   <input
                     type="password"
                     value={project.config.destination.auth.token || ''}
-                    onChange={e => updateConfig('destination', 'token', e.target.value)}
+                    onChange={e => setProject({ ...project, config: { ...project.config, destination: { ...project.config.destination, auth: { ...project.config.destination.auth, token: e.target.value } } } })}
                     className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-purple-500"
                   />
                 </div>
@@ -325,7 +332,7 @@ export function SettingsPage() {
                     <input
                       type="text"
                       value={project.config.destination.auth.key || ''}
-                      onChange={e => updateConfig('destination', 'key', e.target.value)}
+                      onChange={e => setProject({ ...project, config: { ...project.config, destination: { ...project.config.destination, auth: { ...project.config.destination.auth, key: e.target.value } } } })}
                       className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-purple-500"
                     />
                   </div>
@@ -334,7 +341,7 @@ export function SettingsPage() {
                     <input
                       type="password"
                       value={project.config.destination.auth.secret || ''}
-                      onChange={e => updateConfig('destination', 'secret', e.target.value)}
+                      onChange={e => setProject({ ...project, config: { ...project.config, destination: { ...project.config.destination, auth: { ...project.config.destination.auth, secret: e.target.value } } } })}
                       className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-purple-500"
                     />
                   </div>
@@ -367,7 +374,7 @@ export function SettingsPage() {
 
           {/* Tabs */}
           <div className="flex gap-2 mb-6 border-b border-gray-700">
-            {['products', 'customers', 'orders'].map((entity) => (
+            {['products', 'customers', 'orders', 'posts', 'pages'].map((entity) => (
               <button
                 key={entity}
                 type="button"
@@ -394,7 +401,9 @@ export function SettingsPage() {
                     const currentMapping = project.mapping || {
                       products: { enabled: true, fields: {} },
                       customers: { enabled: true, fields: {} },
-                      orders: { enabled: true, fields: {} }
+                      orders: { enabled: true, fields: {} },
+                      posts: { enabled: true, fields: {} },
+                      pages: { enabled: true, fields: {} }
                     };
                     
                     setProject({ 

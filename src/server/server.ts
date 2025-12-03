@@ -11,7 +11,7 @@ import { ISourceConnector, IDestinationConnector } from '../core/types';
 import 'dotenv/config';
 import { v4 as uuidv4 } from 'uuid';
 import { initializeDatabase } from '../db/database';
-import { projectRepository } from '../db/repositories/project-repository';
+import { projectRepository, Project } from '../db/repositories/project-repository';
 import { migrateFromJson } from '../db/migrate';
 
 const app = express();
@@ -36,22 +36,6 @@ migrateFromJson().catch(console.error);
 interface ConnectorConfig {
     url: string;
     auth: any; // Flexible for different connector types
-}
-
-interface Project {
-    id: string;
-    name: string;
-    sourceType: 'shopify' | 'woocommerce';
-    destType: 'shopify' | 'woocommerce';
-    config: {
-        source: ConnectorConfig;
-        destination: ConnectorConfig;
-    };
-    mapping: {
-        products: { enabled: boolean; fields: Record<string, string> };
-        customers: { enabled: boolean; fields: Record<string, string> };
-        orders: { enabled: boolean; fields: Record<string, string> };
-    };
 }
 
 interface MigrationStatus {
@@ -153,7 +137,9 @@ app.post('/api/projects', async (req, res) => {
         mapping: {
             products: { enabled: true, fields: {} },
             customers: { enabled: true, fields: {} },
-            orders: { enabled: true, fields: {} }
+            orders: { enabled: true, fields: {} },
+            posts: { enabled: true, fields: {} },
+            pages: { enabled: true, fields: {} }
         }
     };
     
@@ -213,18 +199,36 @@ app.get('/api/projects/:id/schema', async (req, res) => {
              throw new Error(`Source connector (${source.constructor.name}) does not implement getExportFields`);
         }
 
+        // Helper to safely fetch fields without crashing the whole request
+        const getFieldsSafe = async (fn: () => Promise<string[]>, context: string) => {
+            try {
+                return await fn();
+            } catch (error: any) {
+                console.error(`Warning: Failed to fetch fields for ${context}:`, error.message);
+                return [];
+            }
+        };
+
         const schema = {
             products: {
-                source: await source.getExportFields('products'),
-                destination: await destination.getImportFields('products')
+                source: await getFieldsSafe(() => source.getExportFields('products'), 'source products'),
+                destination: await getFieldsSafe(() => destination.getImportFields('products'), 'destination products')
             },
             customers: {
-                source: await source.getExportFields('customers'),
-                destination: await destination.getImportFields('customers')
+                source: await getFieldsSafe(() => source.getExportFields('customers'), 'source customers'),
+                destination: await getFieldsSafe(() => destination.getImportFields('customers'), 'destination customers')
             },
             orders: {
-                source: await source.getExportFields('orders'),
-                destination: await destination.getImportFields('orders')
+                source: await getFieldsSafe(() => source.getExportFields('orders'), 'source orders'),
+                destination: await getFieldsSafe(() => destination.getImportFields('orders'), 'destination orders')
+            },
+            posts: {
+                source: await getFieldsSafe(() => source.getExportFields('posts'), 'source posts'),
+                destination: await getFieldsSafe(() => destination.getImportFields('posts'), 'destination posts')
+            },
+            pages: {
+                source: await getFieldsSafe(() => source.getExportFields('pages'), 'source pages'),
+                destination: await getFieldsSafe(() => destination.getImportFields('pages'), 'destination pages')
             }
         };
 

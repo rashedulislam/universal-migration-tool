@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder } from '../../core/types';
+import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder, UniversalPost, UniversalPage } from '../../core/types';
 
 export class ShopifySource implements ISourceConnector {
     name = 'Shopify Source';
@@ -123,14 +123,84 @@ export class ShopifySource implements ISourceConnector {
         }));
     }
 
-    async getExportFields(entityType: 'products' | 'customers' | 'orders'): Promise<string[]> {
+    async getPosts(): Promise<UniversalPost[]> {
         if (!this.client) throw new Error('Not connected');
         
+        // 1. Fetch all blogs
+        const blogsResponse = await this.client.get('/blogs.json');
+        const blogs = blogsResponse.data.blogs;
+        
+        let allArticles: any[] = [];
+        
+        // 2. Fetch articles for each blog
+        for (const blog of blogs) {
+            const articlesResponse = await this.client.get(`/blogs/${blog.id}/articles.json`);
+            allArticles = [...allArticles, ...articlesResponse.data.articles];
+        }
+
+        return allArticles.map((article: any) => ({
+            originalId: article.id.toString(),
+            title: article.title,
+            content: article.body_html,
+            slug: article.handle,
+            status: article.published_at ? 'publish' : 'draft',
+            authorId: article.user_id?.toString(),
+            authorName: article.author,
+            tags: article.tags ? article.tags.split(',').map((t: string) => t.trim()) : [],
+            featuredImage: article.image?.src,
+            createdAt: new Date(article.created_at),
+            updatedAt: new Date(article.updated_at),
+            originalData: article
+        }));
+    }
+
+    async getPages(): Promise<UniversalPage[]> {
+        if (!this.client) throw new Error('Not connected');
+        
+        const response = await this.client.get('/pages.json');
+        const pages = response.data.pages;
+
+        return pages.map((page: any) => ({
+            originalId: page.id.toString(),
+            title: page.title,
+            content: page.body_html,
+            slug: page.handle,
+            status: page.published_at ? 'publish' : 'draft',
+            authorId: undefined, // Pages in Shopify might not have user_id exposed easily
+            authorName: page.author,
+            createdAt: new Date(page.created_at),
+            updatedAt: new Date(page.updated_at),
+            originalData: page
+        }));
+    }
+
+    async getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages'): Promise<string[]> {
+        if (!this.client) throw new Error('Not connected');
+        
+        if (entityType === 'posts') {
+            // Try to find an article in the first few blogs
+            const blogs = await this.client.get('/blogs.json?limit=5');
+            for (const blog of blogs.data.blogs) {
+                const articles = await this.client.get(`/blogs/${blog.id}/articles.json?limit=1`);
+                if (articles.data.articles.length > 0) {
+                    return Object.keys(articles.data.articles[0]);
+                }
+            }
+            
+            // Fallback: Return standard Shopify Article fields if no articles found
+            return [
+                'id', 'title', 'body_html', 'blog_id', 'author', 'user_id', 
+                'published_at', 'created_at', 'updated_at', 'summary_html', 
+                'template_suffix', 'handle', 'tags', 'image'
+            ];
+        }
+
         let endpoint = '';
         switch (entityType) {
             case 'products': endpoint = '/products.json?limit=1'; break;
             case 'customers': endpoint = '/customers.json?limit=1'; break;
             case 'orders': endpoint = '/orders.json?limit=1&status=any'; break;
+            case 'pages': endpoint = '/pages.json?limit=1'; break;
         }
         
         const response = await this.client.get(endpoint);

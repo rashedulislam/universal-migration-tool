@@ -20,6 +20,8 @@ export interface Project {
         products: { enabled: boolean; fields: Record<string, string> };
         customers: { enabled: boolean; fields: Record<string, string> };
         orders: { enabled: boolean; fields: Record<string, string> };
+        posts: { enabled: boolean; fields: Record<string, string> };
+        pages: { enabled: boolean; fields: Record<string, string> };
     };
     createdAt?: Date;
     updatedAt?: Date;
@@ -173,7 +175,9 @@ export class ProjectRepository {
         const mapping: any = {
             products: { enabled: true, fields: {} },
             customers: { enabled: true, fields: {} },
-            orders: { enabled: true, fields: {} }
+            orders: { enabled: true, fields: {} },
+            posts: { enabled: true, fields: {} },
+            pages: { enabled: true, fields: {} }
         };
 
         for (const m of mappings) {

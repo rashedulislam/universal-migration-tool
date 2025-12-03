@@ -79,6 +79,39 @@ export interface UniversalLineItem {
     productId?: string;
 }
 
+export interface UniversalPost {
+    id?: string;
+    originalId?: string;
+    title: string;
+    content: string;
+    slug: string;
+    status: 'publish' | 'draft' | 'private' | 'future';
+    authorId?: string;
+    authorName?: string;
+    categories?: string[];
+    tags?: string[];
+    featuredImage?: string;
+    createdAt: Date;
+    updatedAt: Date;
+    originalData?: any;
+    mappedFields?: Record<string, any>;
+}
+
+export interface UniversalPage {
+    id?: string;
+    originalId?: string;
+    title: string;
+    content: string;
+    slug: string;
+    status: 'publish' | 'draft' | 'private';
+    authorId?: string;
+    authorName?: string;
+    createdAt: Date;
+    updatedAt: Date;
+    originalData?: any;
+    mappedFields?: Record<string, any>;
+}
+
 export interface ISourceConnector {
     name: string;
     connect(): Promise<void>;
@@ -86,7 +119,9 @@ export interface ISourceConnector {
     getProducts(): Promise<UniversalProduct[]>;
     getCustomers(): Promise<UniversalCustomer[]>;
     getOrders(): Promise<UniversalOrder[]>;
-    getExportFields(entityType: 'products' | 'customers' | 'orders'): Promise<string[]>;
+    getPosts(): Promise<UniversalPost[]>;
+    getPages(): Promise<UniversalPage[]>;
+    getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages'): Promise<string[]>;
 }
 
 export interface IDestinationConnector {
@@ -96,7 +131,9 @@ export interface IDestinationConnector {
     importProducts(products: UniversalProduct[]): Promise<ImportResult[]>;
     importCustomers(customers: UniversalCustomer[]): Promise<ImportResult[]>;
     importOrders(orders: UniversalOrder[]): Promise<ImportResult[]>;
-    getImportFields(entityType: 'products' | 'customers' | 'orders'): Promise<string[]>;
+    importPosts(posts: UniversalPost[]): Promise<ImportResult[]>;
+    importPages(pages: UniversalPage[]): Promise<ImportResult[]>;
+    getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages'): Promise<string[]>;
 }
 
 export interface ImportResult {
