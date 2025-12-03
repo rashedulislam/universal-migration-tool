@@ -125,6 +125,12 @@ export function SettingsPage() {
     try {
       const res = await axios.get(`http://localhost:3001/api/projects/${projectId}`);
       setProject(res.data);
+      
+      // Auto-fetch schema if credentials exist
+      const p = res.data;
+      if (p.config.source.url && p.config.destination.url) {
+         fetchSchema(undefined, p);
+      }
     } catch (error) {
       console.error('Failed to fetch project', error);
     } finally {
@@ -132,20 +138,62 @@ export function SettingsPage() {
     }
   };
 
-  const fetchSchema = async (e?: React.MouseEvent) => {
+  const fetchSchema = async (e?: React.MouseEvent, currentProject?: Project) => {
     if (e) e.preventDefault();
+    const proj = currentProject || project;
+    if (!proj) return;
+
     setIsFetchingSchema(true);
     setMessage(null);
     try {
       const res = await axios.get(`http://localhost:3001/api/projects/${projectId}/schema`);
-      setSchema(res.data);
-      setMessage({ type: 'success', text: 'Schema loaded successfully' });
+      const newSchema = res.data;
+      setSchema(newSchema);
+
+      // Merge found fields into project mapping so they persist
+      const newProject = { ...proj };
+      
+      // Ensure mapping structure exists
+      if (!newProject.mapping) {
+        newProject.mapping = {
+          products: { enabled: true, fields: {} },
+          customers: { enabled: true, fields: {} },
+          orders: { enabled: true, fields: {} }
+        };
+      }
+
+      (['products', 'customers', 'orders'] as const).forEach(entity => {
+        const destFields = newSchema[entity]?.destination || [];
+        // Initialize entity mapping if missing
+        if (!newProject.mapping![entity]) {
+          newProject.mapping![entity] = { enabled: true, fields: {} };
+        }
+        
+        const currentFields = { ...newProject.mapping![entity].fields };
+        
+        destFields.forEach((field: string) => {
+          // Only add if not already present (preserve existing mappings)
+          if (currentFields[field] === undefined) {
+            currentFields[field] = ''; 
+          }
+        });
+        
+        newProject.mapping![entity].fields = currentFields;
+      });
+
+      setProject(newProject);
+      if (e) {
+          setMessage({ type: 'success', text: 'Schema loaded and fields updated.' });
+      }
     } catch (error: any) {
       console.error('Failed to fetch schema', error);
-      setMessage({ 
-        type: 'error', 
-        text: error.response?.data?.message || 'Failed to load schema. Check connections.' 
-      });
+      // Only show error on manual click, or log it silently on auto-load
+      if (e) {
+        setMessage({ 
+            type: 'error', 
+            text: error.response?.data?.message || 'Failed to load schema. Check connections.' 
+        });
+      }
     } finally {
       setIsFetchingSchema(false);
     }
