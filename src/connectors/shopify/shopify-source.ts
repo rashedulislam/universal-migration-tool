@@ -36,12 +36,45 @@ export class ShopifySource implements ISourceConnector {
         this.client = null;
     }
 
-    async getProducts(): Promise<UniversalProduct[]> {
+    async getProducts(onProgress?: (progress: number) => void): Promise<UniversalProduct[]> {
         if (!this.client) throw new Error('Not connected');
-        const response = await this.client.get('/products.json');
-        const shopifyProducts = response.data.products;
+        
+        // 1. Get total count for progress bar
+        let total = 0;
+        try {
+            const countRes = await this.client.get('/products/count.json');
+            total = countRes.data.count;
+        } catch (e) {
+            console.warn('Failed to fetch product count', e);
+        }
 
-        return shopifyProducts.map((p: any) => ({
+        let allProducts: any[] = [];
+        let url = '/products.json?limit=250'; // Fetch max allowed per page
+
+        while (url) {
+            const response = await this.client.get(url);
+            allProducts = [...allProducts, ...response.data.products];
+
+            if (onProgress && total > 0) {
+                onProgress(Math.min(100, Math.round((allProducts.length / total) * 100)));
+            }
+
+            // Check for Link header for pagination
+            const linkHeader = response.headers.link;
+            if (linkHeader && linkHeader.includes('rel="next"')) {
+                const match = linkHeader.match(/<([^>]+)>; rel="next"/);
+                if (match) {
+                    // Use full URL, axios will ignore baseURL if url is absolute
+                    url = match[1];
+                } else {
+                    url = '';
+                }
+            } else {
+                url = '';
+            }
+        }
+
+        return allProducts.map((p: any) => ({
             originalId: p.id.toString(),
             title: p.title,
             description: p.body_html,
@@ -62,10 +95,42 @@ export class ShopifySource implements ISourceConnector {
         }));
     }
 
-    async getCustomers(): Promise<UniversalCustomer[]> {
+    async getCustomers(onProgress?: (progress: number) => void): Promise<UniversalCustomer[]> {
         if (!this.client) throw new Error('Not connected');
-        const response = await this.client.get('/customers.json');
-        return response.data.customers.map((c: any) => ({
+        
+        let total = 0;
+        try {
+            const countRes = await this.client.get('/customers/count.json');
+            total = countRes.data.count;
+        } catch (e) {
+            console.warn('Failed to fetch customer count', e);
+        }
+
+        let allCustomers: any[] = [];
+        let url = '/customers.json?limit=250';
+
+        while (url) {
+            const response = await this.client.get(url);
+            allCustomers = [...allCustomers, ...response.data.customers];
+
+            if (onProgress && total > 0) {
+                onProgress(Math.min(100, Math.round((allCustomers.length / total) * 100)));
+            }
+
+            const linkHeader = response.headers.link;
+            if (linkHeader && linkHeader.includes('rel="next"')) {
+                const match = linkHeader.match(/<([^>]+)>; rel="next"/);
+                if (match) {
+                    url = match[1];
+                } else {
+                    url = '';
+                }
+            } else {
+                url = '';
+            }
+        }
+
+        return allCustomers.map((c: any) => ({
             originalId: c.id.toString(),
             email: c.email,
             firstName: c.first_name,
@@ -81,14 +146,42 @@ export class ShopifySource implements ISourceConnector {
         }));
     }
 
-    async getOrders(): Promise<UniversalOrder[]> {
+    async getOrders(onProgress?: (progress: number) => void): Promise<UniversalOrder[]> {
         if (!this.client) throw new Error('Not connected');
         
-        // Fetch orders from Shopify
-        const response = await this.client.get('/orders.json?status=any');
-        const shopifyOrders = response.data.orders;
+        let total = 0;
+        try {
+            const countRes = await this.client.get('/orders/count.json?status=any');
+            total = countRes.data.count;
+        } catch (e) {
+            console.warn('Failed to fetch order count', e);
+        }
 
-        return shopifyOrders.map((order: any) => ({
+        let allOrders: any[] = [];
+        let url = '/orders.json?status=any&limit=250';
+
+        while (url) {
+            const response = await this.client.get(url);
+            allOrders = [...allOrders, ...response.data.orders];
+
+            if (onProgress && total > 0) {
+                onProgress(Math.min(100, Math.round((allOrders.length / total) * 100)));
+            }
+
+            const linkHeader = response.headers.link;
+            if (linkHeader && linkHeader.includes('rel="next"')) {
+                const match = linkHeader.match(/<([^>]+)>; rel="next"/);
+                if (match) {
+                    url = match[1];
+                } else {
+                    url = '';
+                }
+            } else {
+                url = '';
+            }
+        }
+
+        return allOrders.map((order: any) => ({
             originalId: order.id.toString(),
             orderNumber: order.order_number.toString(),
             customer: {
@@ -123,20 +216,43 @@ export class ShopifySource implements ISourceConnector {
         }));
     }
 
-    async getPosts(): Promise<UniversalPost[]> {
+    async getPosts(onProgress?: (progress: number) => void): Promise<UniversalPost[]> {
         if (!this.client) throw new Error('Not connected');
         
         // 1. Fetch all blogs
         const blogsResponse = await this.client.get('/blogs.json');
         const blogs = blogsResponse.data.blogs;
         
+        // Note: Getting total article count is tricky as it's per blog. 
+        // We'll skip precise progress for posts/pages or estimate.
+        
         let allArticles: any[] = [];
         
-        // 2. Fetch articles for each blog
+        // 2. Fetch articles for each blog with pagination
         for (const blog of blogs) {
-            const articlesResponse = await this.client.get(`/blogs/${blog.id}/articles.json`);
-            allArticles = [...allArticles, ...articlesResponse.data.articles];
+            let url = `/blogs/${blog.id}/articles.json?limit=250`;
+            while (url) {
+                const response = await this.client.get(url);
+                allArticles = [...allArticles, ...response.data.articles];
+                
+                // Simple progress: just report something to show activity
+                if (onProgress) onProgress(50); 
+
+                const linkHeader = response.headers.link;
+                if (linkHeader && linkHeader.includes('rel="next"')) {
+                    const match = linkHeader.match(/<([^>]+)>; rel="next"/);
+                    if (match) {
+                        url = match[1];
+                    } else {
+                        url = '';
+                    }
+                } else {
+                    url = '';
+                }
+            }
         }
+        
+        if (onProgress) onProgress(100);
 
         return allArticles.map((article: any) => ({
             originalId: article.id.toString(),
@@ -154,13 +270,42 @@ export class ShopifySource implements ISourceConnector {
         }));
     }
 
-    async getPages(): Promise<UniversalPage[]> {
+    async getPages(onProgress?: (progress: number) => void): Promise<UniversalPage[]> {
         if (!this.client) throw new Error('Not connected');
         
-        const response = await this.client.get('/pages.json');
-        const pages = response.data.pages;
+        let total = 0;
+        try {
+            const countRes = await this.client.get('/pages/count.json');
+            total = countRes.data.count;
+        } catch (e) {
+            console.warn('Failed to fetch page count', e);
+        }
 
-        return pages.map((page: any) => ({
+        let allPages: any[] = [];
+        let url = '/pages.json?limit=250';
+
+        while (url) {
+            const response = await this.client.get(url);
+            allPages = [...allPages, ...response.data.pages];
+
+            if (onProgress && total > 0) {
+                onProgress(Math.min(100, Math.round((allPages.length / total) * 100)));
+            }
+
+            const linkHeader = response.headers.link;
+            if (linkHeader && linkHeader.includes('rel="next"')) {
+                const match = linkHeader.match(/<([^>]+)>; rel="next"/);
+                if (match) {
+                    url = match[1];
+                } else {
+                    url = '';
+                }
+            } else {
+                url = '';
+            }
+        }
+
+        return allPages.map((page: any) => ({
             originalId: page.id.toString(),
             title: page.title,
             content: page.body_html,

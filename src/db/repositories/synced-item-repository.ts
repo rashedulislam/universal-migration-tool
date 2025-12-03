@@ -32,12 +32,15 @@ export class SyncedItemRepository {
     }
 
     /**
-     * Get items for a project and entity type
+     * Get items for a project and entity type with pagination
      */
-    getItems(projectId: string, entityType: string): SyncedItem[] {
-        const rows = statements.getSyncedItems.all(projectId, entityType) as any[];
+    getItems(projectId: string, entityType: string, page: number = 1, limit: number = 50): { items: SyncedItem[], total: number } {
+        const offset = (page - 1) * limit;
         
-        return rows.map(row => ({
+        const rows = statements.getSyncedItems.all(projectId, entityType, limit, offset) as any[];
+        const count = statements.countSyncedItems.get(projectId, entityType) as any;
+
+        const items = rows.map(row => ({
             id: row.id,
             projectId: row.project_id,
             entityType: row.entity_type,
@@ -45,6 +48,11 @@ export class SyncedItemRepository {
             data: JSON.parse(row.data),
             syncedAt: new Date(row.synced_at)
         }));
+
+        return {
+            items,
+            total: count.total
+        };
     }
 }
 

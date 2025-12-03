@@ -34,10 +34,36 @@ export class WooCommerceSource implements ISourceConnector {
         this.client = null;
     }
 
-    async getProducts(): Promise<UniversalProduct[]> {
+    async getProducts(onProgress?: (progress: number) => void): Promise<UniversalProduct[]> {
         if (!this.client) throw new Error('Not connected');
-        const response = await this.client.get('/products');
-        return response.data.map((p: any) => ({
+        
+        let allProducts: any[] = [];
+        let page = 1;
+        const perPage = 100; // Max allowed by WooCommerce
+        let total = 0;
+
+        while (true) {
+            const response = await this.client.get('/products', {
+                params: { page, per_page: perPage }
+            });
+            
+            if (page === 1) {
+                total = parseInt(response.headers['x-wp-total'] || '0');
+            }
+
+            const products = response.data;
+            if (products.length === 0) break;
+            
+            allProducts = [...allProducts, ...products];
+            
+            if (onProgress && total > 0) {
+                onProgress(Math.min(100, Math.round((allProducts.length / total) * 100)));
+            }
+            
+            page++;
+        }
+
+        return allProducts.map((p: any) => ({
             originalId: p.id.toString(),
             title: p.name,
             description: p.description,
@@ -50,10 +76,36 @@ export class WooCommerceSource implements ISourceConnector {
         }));
     }
 
-    async getCustomers(): Promise<UniversalCustomer[]> {
+    async getCustomers(onProgress?: (progress: number) => void): Promise<UniversalCustomer[]> {
         if (!this.client) throw new Error('Not connected');
-        const response = await this.client.get('/customers');
-        return response.data.map((c: any) => ({
+        
+        let allCustomers: any[] = [];
+        let page = 1;
+        const perPage = 100;
+        let total = 0;
+
+        while (true) {
+            const response = await this.client.get('/customers', {
+                params: { page, per_page: perPage }
+            });
+
+            if (page === 1) {
+                total = parseInt(response.headers['x-wp-total'] || '0');
+            }
+
+            const customers = response.data;
+            if (customers.length === 0) break;
+
+            allCustomers = [...allCustomers, ...customers];
+
+            if (onProgress && total > 0) {
+                onProgress(Math.min(100, Math.round((allCustomers.length / total) * 100)));
+            }
+
+            page++;
+        }
+
+        return allCustomers.map((c: any) => ({
             originalId: c.id.toString(),
             email: c.email,
             firstName: c.first_name,
@@ -71,10 +123,36 @@ export class WooCommerceSource implements ISourceConnector {
         }));
     }
 
-    async getOrders(): Promise<UniversalOrder[]> {
+    async getOrders(onProgress?: (progress: number) => void): Promise<UniversalOrder[]> {
         if (!this.client) throw new Error('Not connected');
-        const response = await this.client.get('/orders');
-        return response.data.map((o: any) => ({
+        
+        let allOrders: any[] = [];
+        let page = 1;
+        const perPage = 100;
+        let total = 0;
+
+        while (true) {
+            const response = await this.client.get('/orders', {
+                params: { page, per_page: perPage }
+            });
+
+            if (page === 1) {
+                total = parseInt(response.headers['x-wp-total'] || '0');
+            }
+
+            const orders = response.data;
+            if (orders.length === 0) break;
+
+            allOrders = [...allOrders, ...orders];
+
+            if (onProgress && total > 0) {
+                onProgress(Math.min(100, Math.round((allOrders.length / total) * 100)));
+            }
+
+            page++;
+        }
+
+        return allOrders.map((o: any) => ({
             originalId: o.id.toString(),
             orderNumber: o.number,
             totalPrice: parseFloat(o.total),
@@ -95,14 +173,37 @@ export class WooCommerceSource implements ISourceConnector {
         }));
     }
 
-    async getPosts(): Promise<UniversalPost[]> {
+    async getPosts(onProgress?: (progress: number) => void): Promise<UniversalPost[]> {
         if (!this.client) throw new Error('Not connected');
         
-        // Use _embed to get author details
-        const response = await this.client.get('/wp/v2/posts?_embed');
-        const posts = response.data;
+        let allPosts: any[] = [];
+        let page = 1;
+        const perPage = 100;
+        let total = 0;
 
-        return posts.map((post: any) => {
+        while (true) {
+            // Use _embed to get author details
+            const response = await this.client.get('/wp/v2/posts', {
+                params: { page, per_page: perPage, _embed: true }
+            });
+
+            if (page === 1) {
+                total = parseInt(response.headers['x-wp-total'] || '0');
+            }
+
+            const posts = response.data;
+            if (posts.length === 0) break;
+
+            allPosts = [...allPosts, ...posts];
+
+            if (onProgress && total > 0) {
+                onProgress(Math.min(100, Math.round((allPosts.length / total) * 100)));
+            }
+
+            page++;
+        }
+
+        return allPosts.map((post: any) => {
             const authorName = post._embedded?.author?.[0]?.name || 'Unknown';
             return {
                 originalId: post.id.toString(),
@@ -122,14 +223,36 @@ export class WooCommerceSource implements ISourceConnector {
         });
     }
 
-    async getPages(): Promise<UniversalPage[]> {
+    async getPages(onProgress?: (progress: number) => void): Promise<UniversalPage[]> {
         if (!this.client) throw new Error('Not connected');
         
-        // Use _embed to get author details
-        const response = await this.client.get('/wp/v2/pages?_embed');
-        const pages = response.data;
+        let allPages: any[] = [];
+        let page = 1;
+        const perPage = 100;
+        let total = 0;
 
-        return pages.map((page: any) => {
+        while (true) {
+            const response = await this.client.get('/wp/v2/pages', {
+                params: { page, per_page: perPage, _embed: true }
+            });
+
+            if (page === 1) {
+                total = parseInt(response.headers['x-wp-total'] || '0');
+            }
+
+            const pages = response.data;
+            if (pages.length === 0) break;
+
+            allPages = [...allPages, ...pages];
+
+            if (onProgress && total > 0) {
+                onProgress(Math.min(100, Math.round((allPages.length / total) * 100)));
+            }
+
+            page++;
+        }
+
+        return allPages.map((page: any) => {
             const authorName = page._embedded?.author?.[0]?.name || 'Unknown';
             return {
                 originalId: page.id.toString(),

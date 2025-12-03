@@ -242,12 +242,21 @@ app.get('/api/projects/:id/schema', async (req, res) => {
 
 // Sync Source Data
 
-app.post('/api/projects/:id/sync', async (req, res) => {
-    const { entity } = req.body; // 'products', 'customers', etc.
+app.get('/api/projects/:id/sync', async (req, res) => {
+    const { entity } = req.query; // 'products', 'customers', etc.
     const project = projectRepository.getProjectById(req.params.id);
     
     if (!project) return res.status(404).json({ message: 'Project not found' });
     if (!project.config.source.url) return res.status(400).json({ message: 'Source not configured' });
+
+    // Set headers for SSE
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const sendEvent = (data: any) => {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
 
     try {
         // Initialize Source
@@ -259,32 +268,45 @@ app.post('/api/projects/:id/sync', async (req, res) => {
         }
         await source.connect();
 
-        // Fetch Data
+        // Fetch Data with Progress
         let items: any[] = [];
+        const onProgress = (progress: number) => {
+            sendEvent({ type: 'progress', progress });
+        };
+
         switch (entity) {
-            case 'products': items = await source.getProducts(); break;
-            case 'customers': items = await source.getCustomers(); break;
-            case 'orders': items = await source.getOrders(); break;
-            case 'posts': items = await source.getPosts(); break;
-            case 'pages': items = await source.getPages(); break;
-            default: return res.status(400).json({ message: 'Invalid entity type' });
+            case 'products': items = await source.getProducts(onProgress); break;
+            case 'customers': items = await source.getCustomers(onProgress); break;
+            case 'orders': items = await source.getOrders(onProgress); break;
+            case 'posts': items = await source.getPosts(onProgress); break;
+            case 'pages': items = await source.getPages(onProgress); break;
+            default: 
+                sendEvent({ type: 'error', message: 'Invalid entity type' });
+                res.end();
+                return;
         }
 
         // Save to DB
-        syncedItemRepository.upsertItems(project.id, entity, items);
+        sendEvent({ type: 'status', message: 'Saving to database...' });
+        syncedItemRepository.upsertItems(project.id, entity as string, items);
 
-        res.json({ message: `Synced ${items.length} ${entity} successfully`, count: items.length });
+        sendEvent({ type: 'complete', message: `Synced ${items.length} ${entity} successfully`, count: items.length });
     } catch (error: any) {
         console.error('Sync failed:', error);
-        res.status(500).json({ message: 'Sync failed', error: error.message });
+        sendEvent({ type: 'error', message: error.message });
+    } finally {
+        res.end();
     }
 });
 
 // Get Synced Data
 app.get('/api/projects/:id/data/:entity', async (req, res) => {
     try {
-        const items = syncedItemRepository.getItems(req.params.id, req.params.entity);
-        res.json(items);
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 50;
+        
+        const result = syncedItemRepository.getItems(req.params.id, req.params.entity, page, limit);
+        res.json(result);
     } catch (error: any) {
         res.status(500).json({ message: 'Failed to fetch data', error: error.message });
     }

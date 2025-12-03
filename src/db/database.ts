@@ -131,7 +131,8 @@ export const statements = {
     `),
 
     // Synced Items
-    getSyncedItems: db.prepare('SELECT * FROM synced_items WHERE project_id = ? AND entity_type = ? ORDER BY synced_at DESC'),
+    getSyncedItems: db.prepare('SELECT * FROM synced_items WHERE project_id = ? AND entity_type = ? ORDER BY synced_at DESC LIMIT ? OFFSET ?'),
+    countSyncedItems: db.prepare('SELECT COUNT(*) as total FROM synced_items WHERE project_id = ? AND entity_type = ?'),
     insertSyncedItem: db.prepare(`
         INSERT INTO synced_items (project_id, entity_type, original_id, data, synced_at) 
         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)

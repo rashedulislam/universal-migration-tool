@@ -116,11 +116,11 @@ export interface ISourceConnector {
     name: string;
     connect(): Promise<void>;
     disconnect(): Promise<void>;
-    getProducts(): Promise<UniversalProduct[]>;
-    getCustomers(): Promise<UniversalCustomer[]>;
-    getOrders(): Promise<UniversalOrder[]>;
-    getPosts(): Promise<UniversalPost[]>;
-    getPages(): Promise<UniversalPage[]>;
+    getProducts(onProgress?: (progress: number) => void): Promise<UniversalProduct[]>;
+    getCustomers(onProgress?: (progress: number) => void): Promise<UniversalCustomer[]>;
+    getOrders(onProgress?: (progress: number) => void): Promise<UniversalOrder[]>;
+    getPosts(onProgress?: (progress: number) => void): Promise<UniversalPost[]>;
+    getPages(onProgress?: (progress: number) => void): Promise<UniversalPage[]>;
     getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages'): Promise<string[]>;
 }
 
