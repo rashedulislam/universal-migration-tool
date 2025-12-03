@@ -33,6 +33,20 @@ export function SidebarLayout() {
             <LayoutDashboard size={20} />
             Dashboard
           </NavLink>
+
+          <NavLink
+            to={`/project/${projectId}/data`}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                isActive
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                  : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+              }`
+            }
+          >
+            <Database size={20} />
+            Source Data
+          </NavLink>
           
           <NavLink
             to={`/project/${projectId}/settings`}

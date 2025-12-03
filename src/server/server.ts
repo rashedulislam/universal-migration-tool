@@ -13,6 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { initializeDatabase } from '../db/database';
 import { projectRepository, Project } from '../db/repositories/project-repository';
 import { migrateFromJson } from '../db/migrate';
+import { syncedItemRepository } from '../db/repositories/synced-item-repository';
 
 const app = express();
 const httpServer = createServer(app);
@@ -236,6 +237,56 @@ app.get('/api/projects/:id/schema', async (req, res) => {
     } catch (error: any) {
         console.error('Schema fetch error:', error);
         res.status(500).json({ message: 'Failed to fetch schema', error: error.message });
+    }
+});
+
+// Sync Source Data
+
+app.post('/api/projects/:id/sync', async (req, res) => {
+    const { entity } = req.body; // 'products', 'customers', etc.
+    const project = projectRepository.getProjectById(req.params.id);
+    
+    if (!project) return res.status(404).json({ message: 'Project not found' });
+    if (!project.config.source.url) return res.status(400).json({ message: 'Source not configured' });
+
+    try {
+        // Initialize Source
+        let source: ISourceConnector;
+        if (project.sourceType === 'shopify') {
+            source = new ShopifySource(project.config.source.url, project.config.source.auth.token);
+        } else {
+            source = new WooCommerceSource(project.config.source.url, project.config.source.auth.key, project.config.source.auth.secret);
+        }
+        await source.connect();
+
+        // Fetch Data
+        let items: any[] = [];
+        switch (entity) {
+            case 'products': items = await source.getProducts(); break;
+            case 'customers': items = await source.getCustomers(); break;
+            case 'orders': items = await source.getOrders(); break;
+            case 'posts': items = await source.getPosts(); break;
+            case 'pages': items = await source.getPages(); break;
+            default: return res.status(400).json({ message: 'Invalid entity type' });
+        }
+
+        // Save to DB
+        syncedItemRepository.upsertItems(project.id, entity, items);
+
+        res.json({ message: `Synced ${items.length} ${entity} successfully`, count: items.length });
+    } catch (error: any) {
+        console.error('Sync failed:', error);
+        res.status(500).json({ message: 'Sync failed', error: error.message });
+    }
+});
+
+// Get Synced Data
+app.get('/api/projects/:id/data/:entity', async (req, res) => {
+    try {
+        const items = syncedItemRepository.getItems(req.params.id, req.params.entity);
+        res.json(items);
+    } catch (error: any) {
+        res.status(500).json({ message: 'Failed to fetch data', error: error.message });
     }
 });
 
