@@ -100,7 +100,10 @@ export function DataViewer() {
   // Dynamic columns based on entity type
   const getColumns = () => {
     switch (activeTab) {
-      case 'products': return ['title', 'sku', 'price', 'currency', 'status', 'vendor', 'product_type'];
+      case 'products': return [
+        'title', 'description', 'sku', 'price', 'currency', 'weight', 'weightUnit',
+        'vendor', 'productType', 'status', 'tags', 'categories', 'images', 'variants', 'metafields'
+      ];
       case 'customers': return [
         'firstName', 'lastName', 'email', 'phone', 
         'ordersCount', 'totalSpent', 'currency', 'state', 'verifiedEmail', 
@@ -109,9 +112,17 @@ export function DataViewer() {
         'emailMarketingConsent', 'smsMarketingConsent', 'defaultAddress',
         'addresses', 'createdAt', 'updatedAt'
       ];
-      case 'orders': return ['orderNumber', 'totalPrice', 'currency', 'status', 'email', 'createdAt'];
-      case 'posts': return ['title', 'slug', 'status', 'authorName', 'categories', 'tags', 'createdAt'];
-      case 'pages': return ['title', 'slug', 'status', 'authorName', 'createdAt'];
+      case 'orders': return [
+        'orderNumber', 'status', 'currency', 'totalPrice', 'email', 
+        'customer', 'lineItems', 'billingAddress', 'shippingAddress', 'createdAt'
+      ];
+      case 'posts': return [
+        'title', 'slug', 'status', 'authorName', 'categories', 'tags', 
+        'featuredImage', 'content', 'createdAt', 'updatedAt'
+      ];
+      case 'pages': return [
+        'title', 'slug', 'status', 'authorName', 'content', 'createdAt', 'updatedAt'
+      ];
       default: return ['id'];
     }
   };

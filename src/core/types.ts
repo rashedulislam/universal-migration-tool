@@ -8,6 +8,8 @@ export interface UniversalProduct {
     currency: string;
     weight?: number;
     weightUnit?: string;
+    vendor?: string;
+    productType?: string;
     images: string[];
     variants?: UniversalVariant[];
     categories?: string[];

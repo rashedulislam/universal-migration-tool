@@ -124,6 +124,9 @@ export class ShopifySource implements ISourceConnector {
             originalId: p.id.split('/').pop(), // GraphQL ID is a URL, extract the ID
             title: p.title,
             description: p.descriptionHtml,
+            vendor: p.vendor,
+            productType: p.productType,
+            tags: p.tags,
             sku: p.variants.edges[0]?.node?.sku,
             price: parseFloat(p.variants.edges[0]?.node?.price || '0'),
             currency: 'USD', // TODO: Fetch from shop settings
