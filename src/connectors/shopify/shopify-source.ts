@@ -1,31 +1,37 @@
-import axios, { AxiosInstance } from 'axios';
+import { createAdminApiClient, AdminApiClient } from '@shopify/admin-api-client';
 import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder, UniversalPost, UniversalPage } from '../../core/types';
 
 export class ShopifySource implements ISourceConnector {
     name = 'Shopify Source';
-    private client: AxiosInstance | null = null;
+    private client: AdminApiClient | null = null;
+    private storeUrl: string;
 
-    constructor(private storeUrl: string, private accessToken: string) {
-        // super(); // Removed as ShopifySource does not extend a class in the provided code
-        // this.name = 'Shopify'; // Moved to property declaration
-
-        // Remove protocol if present to avoid double https://
-        const cleanUrl = storeUrl.replace(/^https?:\/\//, '');
-        this.client = axios.create({
-            baseURL: `https://${cleanUrl}/admin/api/2023-10`,
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Shopify-Access-Token': accessToken,
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
+    constructor(storeUrl: string, private accessToken: string) {
+        // Remove protocol if present
+        this.storeUrl = storeUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        
+        this.client = createAdminApiClient({
+            storeDomain: this.storeUrl,
+            apiVersion: '2023-10',
+            accessToken: this.accessToken
         });
     }
 
     async connect(): Promise<void> {
-        // Validate connection
+        // Validate connection by fetching shop name
         try {
-            await this.client!.get('/shop.json'); // Use non-null assertion as client is initialized in constructor
-            console.log('Connected to Shopify Source.');
+            const response = await this.client!.request(`
+                query {
+                    shop {
+                        name
+                    }
+                }
+            `);
+            
+            if (response.errors) {
+                throw new Error((response.errors as any[]).map((e: any) => e.message).join(', '));
+            }
+            console.log('Connected to Shopify Source:', response.data?.shop?.name);
         } catch (error) {
             console.error('Failed to connect to Shopify:', error);
             throw error;
@@ -39,57 +45,95 @@ export class ShopifySource implements ISourceConnector {
     async getProducts(onProgress?: (progress: number) => void): Promise<UniversalProduct[]> {
         if (!this.client) throw new Error('Not connected');
         
-        // 1. Get total count for progress bar
+        // 1. Get total count (optional, for progress)
         let total = 0;
         try {
-            const countRes = await this.client.get('/products/count.json');
-            total = countRes.data.count;
+            const countQuery = `query { productsCount { count } }`;
+            const countRes = await this.client.request(countQuery);
+            total = countRes.data?.productsCount?.count || 0;
         } catch (e) {
             console.warn('Failed to fetch product count', e);
         }
 
         let allProducts: any[] = [];
-        let url = '/products.json?limit=250'; // Fetch max allowed per page
+        let hasNextPage = true;
+        let endCursor: string | null = null;
 
-        while (url) {
-            const response = await this.client.get(url);
-            allProducts = [...allProducts, ...response.data.products];
+        while (hasNextPage) {
+            const query = `
+                query getProducts($cursor: String) {
+                    products(first: 50, after: $cursor) {
+                        pageInfo {
+                            hasNextPage
+                            endCursor
+                        }
+                        edges {
+                            node {
+                                id
+                                title
+                                descriptionHtml
+                                vendor
+                                productType
+                                status
+                                variants(first: 1) {
+                                    edges {
+                                        node {
+                                            id
+                                            sku
+                                            price
+                                            title
+                                        }
+                                    }
+                                }
+                                images(first: 10) {
+                                    edges {
+                                        node {
+                                            src: url
+                                        }
+                                    }
+                                }
+                                options {
+                                    name
+                                    values
+                                }
+                            }
+                        }
+                    }
+                }
+            `;
+
+            const response: any = await this.client.request(query, { variables: { cursor: endCursor } });
+            
+            if (response.errors) {
+                throw new Error(response.errors.map((e: any) => e.message).join(', '));
+            }
+
+            const data = response.data?.products;
+            const nodes = data?.edges.map((edge: any) => edge.node) || [];
+            allProducts = [...allProducts, ...nodes];
 
             if (onProgress && total > 0) {
                 onProgress(Math.min(100, Math.round((allProducts.length / total) * 100)));
             }
 
-            // Check for Link header for pagination
-            const linkHeader = response.headers.link;
-            if (linkHeader && linkHeader.includes('rel="next"')) {
-                const match = linkHeader.match(/<([^>]+)>; rel="next"/);
-                if (match) {
-                    // Use full URL, axios will ignore baseURL if url is absolute
-                    url = match[1];
-                } else {
-                    url = '';
-                }
-            } else {
-                url = '';
-            }
+            hasNextPage = data?.pageInfo?.hasNextPage || false;
+            endCursor = data?.pageInfo?.endCursor || null;
         }
 
         return allProducts.map((p: any) => ({
-            originalId: p.id.toString(),
+            originalId: p.id.split('/').pop(), // GraphQL ID is a URL, extract the ID
             title: p.title,
-            description: p.body_html,
-            sku: p.variants[0]?.sku,
-            price: parseFloat(p.variants[0]?.price || '0'),
+            description: p.descriptionHtml,
+            sku: p.variants.edges[0]?.node?.sku,
+            price: parseFloat(p.variants.edges[0]?.node?.price || '0'),
             currency: 'USD', // TODO: Fetch from shop settings
-            images: p.images.map((img: any) => img.src),
-            variants: p.variants.map((v: any) => ({
-                originalId: v.id.toString(),
-                title: v.title,
-                sku: v.sku,
-                price: parseFloat(v.price),
-                options: {
-                    [p.options[0]?.name]: v.option1, // Simplified mapping
-                }
+            images: p.images.edges.map((img: any) => img.node.src),
+            variants: p.variants.edges.map((v: any) => ({
+                originalId: v.node.id.split('/').pop(),
+                title: v.node.title,
+                sku: v.node.sku,
+                price: parseFloat(v.node.price),
+                options: {} // Simplified
             })),
             originalData: p
         }));
@@ -97,44 +141,118 @@ export class ShopifySource implements ISourceConnector {
 
     async getCustomers(onProgress?: (progress: number) => void): Promise<UniversalCustomer[]> {
         if (!this.client) throw new Error('Not connected');
-        
+
+        // 1. Get total count
         let total = 0;
         try {
-            const countRes = await this.client.get('/customers/count.json');
-            total = countRes.data.count;
+            const countQuery = `query { customersCount { count } }`;
+            const countRes = await this.client.request(countQuery);
+            total = countRes.data?.customersCount?.count || 0;
         } catch (e) {
             console.warn('Failed to fetch customer count', e);
         }
 
         let allCustomers: any[] = [];
-        let url = '/customers.json?limit=250';
+        let hasNextPage = true;
+        let endCursor: string | null = null;
 
-        while (url) {
-            const response = await this.client.get(url);
-            allCustomers = [...allCustomers, ...response.data.customers];
+        while (hasNextPage) {
+            const query = `
+                query getCustomers($cursor: String) {
+                    customers(first: 50, after: $cursor) {
+                        pageInfo {
+                            hasNextPage
+                            endCursor
+                        }
+                        edges {
+                            node {
+                                id
+                                email
+                                firstName
+                                lastName
+                                phone
+                                note
+                                state
+                                tags
+                                taxExempt
+                                verifiedEmail
+                                createdAt
+                                updatedAt
+                                numberOfOrders
+                                amountSpent {
+                                    amount
+                                    currencyCode
+                                }
+                                defaultAddress {
+                                    address1
+                                    address2
+                                    city
+                                    company
+                                    country
+                                    province
+                                    zip
+                                    phone
+                                }
+                                addresses {
+                                    address1
+                                    address2
+                                    city
+                                    company
+                                    country
+                                    province
+                                    zip
+                                    phone
+                                }
+                                lastOrder {
+                                    id
+                                    name
+                                }
+                                metafields(first: 10) {
+                                    edges {
+                                        node {
+                                            namespace
+                                            key
+                                            value
+                                        }
+                                    }
+                                }
+                                emailMarketingConsent {
+                                    marketingState
+                                    consentUpdatedAt
+                                }
+                                smsMarketingConsent {
+                                    marketingState
+                                    consentUpdatedAt
+                                }
+                            }
+                        }
+                    }
+                }
+            `;
+
+            const response: any = await this.client.request(query, { variables: { cursor: endCursor } });
+            
+            if (response.errors) {
+                throw new Error(response.errors.map((e: any) => e.message).join(', '));
+            }
+
+            const data = response.data?.customers;
+            const nodes = data?.edges.map((edge: any) => edge.node) || [];
+            allCustomers = [...allCustomers, ...nodes];
 
             if (onProgress && total > 0) {
                 onProgress(Math.min(100, Math.round((allCustomers.length / total) * 100)));
             }
 
-            const linkHeader = response.headers.link;
-            if (linkHeader && linkHeader.includes('rel="next"')) {
-                const match = linkHeader.match(/<([^>]+)>; rel="next"/);
-                if (match) {
-                    url = match[1];
-                } else {
-                    url = '';
-                }
-            } else {
-                url = '';
-            }
+            hasNextPage = data?.pageInfo?.hasNextPage || false;
+            endCursor = data?.pageInfo?.endCursor || null;
         }
 
         return allCustomers.map((c: any) => ({
-            originalId: c.id.toString(),
+            originalId: c.id.split('/').pop(),
             email: c.email,
-            firstName: c.first_name,
-            lastName: c.last_name,
+            firstName: c.firstName,
+            lastName: c.lastName,
             phone: c.phone,
             addresses: c.addresses.map((a: any) => ({
                 address1: a.address1,
@@ -142,94 +260,140 @@ export class ShopifySource implements ISourceConnector {
                 country: a.country,
                 zip: a.zip,
             })),
-            currency: c.currency,
-            createdAt: new Date(c.created_at),
-            updatedAt: new Date(c.updated_at),
-            ordersCount: c.orders_count,
-            totalSpent: c.total_spent,
+            currency: c.amountSpent?.currencyCode,
+            createdAt: new Date(c.createdAt),
+            updatedAt: new Date(c.updatedAt),
+            ordersCount: parseInt(c.numberOfOrders || '0'),
+            totalSpent: c.amountSpent?.amount,
             state: c.state,
-            tags: c.tags ? c.tags.split(',').map((t: string) => t.trim()) : [],
+            tags: c.tags,
             note: c.note,
-            verifiedEmail: c.verified_email,
-            taxExempt: c.tax_exempt,
-            lastOrderId: c.last_order_id?.toString(),
-            lastOrderName: c.last_order_name,
-            multipassIdentifier: c.multipass_identifier,
-            marketingOptInLevel: c.marketing_opt_in_level,
-            taxExemptions: c.tax_exemptions,
-            emailMarketingConsent: c.email_marketing_consent,
-            smsMarketingConsent: c.sms_marketing_consent,
-            defaultAddress: c.default_address,
+            verifiedEmail: c.verifiedEmail,
+            taxExempt: c.taxExempt,
+            lastOrderId: c.lastOrder?.id?.split('/').pop(),
+            lastOrderName: c.lastOrder?.name,
+            emailMarketingConsent: c.emailMarketingConsent,
+            smsMarketingConsent: c.smsMarketingConsent,
+            defaultAddress: c.defaultAddress,
             originalData: c
         }));
     }
 
     async getOrders(onProgress?: (progress: number) => void): Promise<UniversalOrder[]> {
         if (!this.client) throw new Error('Not connected');
-        
+
+        // 1. Get total count
         let total = 0;
         try {
-            const countRes = await this.client.get('/orders/count.json?status=any');
-            total = countRes.data.count;
+            const countQuery = `query { ordersCount { count } }`;
+            const countRes = await this.client.request(countQuery);
+            total = countRes.data?.ordersCount?.count || 0;
         } catch (e) {
             console.warn('Failed to fetch order count', e);
         }
 
         let allOrders: any[] = [];
-        let url = '/orders.json?status=any&limit=250';
+        let hasNextPage = true;
+        let endCursor: string | null = null;
 
-        while (url) {
-            const response = await this.client.get(url);
-            allOrders = [...allOrders, ...response.data.orders];
+        while (hasNextPage) {
+            const query = `
+                query getOrders($cursor: String) {
+                    orders(first: 50, after: $cursor) {
+                        pageInfo {
+                            hasNextPage
+                            endCursor
+                        }
+                        edges {
+                            node {
+                                id
+                                name
+                                email
+                                createdAt
+                                totalPriceSet {
+                                    shopMoney {
+                                        amount
+                                        currencyCode
+                                    }
+                                }
+                                displayFinancialStatus
+                                customer {
+                                    id
+                                    email
+                                    firstName
+                                    lastName
+                                    phone
+                                }
+                                lineItems(first: 50) {
+                                    edges {
+                                        node {
+                                            title
+                                            quantity
+                                            originalUnitPriceSet {
+                                                shopMoney {
+                                                    amount
+                                                }
+                                            }
+                                            sku
+                                        }
+                                    }
+                                }
+                                billingAddress {
+                                    address1
+                                    city
+                                    country
+                                    zip
+                                }
+                            }
+                        }
+                    }
+                }
+            `;
+
+            const response: any = await this.client.request(query, { variables: { cursor: endCursor } });
+            
+            if (response.errors) {
+                throw new Error(response.errors.map((e: any) => e.message).join(', '));
+            }
+
+            const data = response.data?.orders;
+            const nodes = data?.edges.map((edge: any) => edge.node) || [];
+            allOrders = [...allOrders, ...nodes];
 
             if (onProgress && total > 0) {
                 onProgress(Math.min(100, Math.round((allOrders.length / total) * 100)));
             }
 
-            const linkHeader = response.headers.link;
-            if (linkHeader && linkHeader.includes('rel="next"')) {
-                const match = linkHeader.match(/<([^>]+)>; rel="next"/);
-                if (match) {
-                    url = match[1];
-                } else {
-                    url = '';
-                }
-            } else {
-                url = '';
-            }
+            hasNextPage = data?.pageInfo?.hasNextPage || false;
+            endCursor = data?.pageInfo?.endCursor || null;
         }
 
         return allOrders.map((order: any) => ({
-            originalId: order.id.toString(),
-            orderNumber: order.order_number.toString(),
+            originalId: order.id.split('/').pop(),
+            orderNumber: order.name,
             customer: {
-                originalId: order.customer?.id?.toString(),
+                originalId: order.customer?.id?.split('/').pop(),
                 email: order.email || order.customer?.email,
-                firstName: order.customer?.first_name,
-                lastName: order.customer?.last_name,
+                firstName: order.customer?.firstName,
+                lastName: order.customer?.lastName,
                 phone: order.customer?.phone,
-                addresses: [] // Simplified for nested object
+                addresses: [] // Simplified
             },
-            lineItems: order.line_items.map((item: any) => ({
-                title: item.title,
-                sku: item.sku,
-                quantity: item.quantity,
-                price: parseFloat(item.price),
-                variantId: item.variant_id?.toString(),
-                productId: item.product_id?.toString()
+            lineItems: order.lineItems.edges.map((item: any) => ({
+                title: item.node.title,
+                quantity: item.node.quantity,
+                price: parseFloat(item.node.originalUnitPriceSet?.shopMoney?.amount || '0'),
+                sku: item.node.sku
             })),
-            totalPrice: parseFloat(order.total_price),
-            currency: order.currency,
-            status: order.financial_status === 'paid' ? 'paid' : 'pending',
-            createdAt: new Date(order.created_at),
-            billingAddress: order.billing_address ? {
-                firstName: order.billing_address.first_name,
-                lastName: order.billing_address.last_name,
-                address1: order.billing_address.address1,
-                city: order.billing_address.city,
-                country: order.billing_address.country,
-                zip: order.billing_address.zip,
-                phone: order.billing_address.phone
+            totalPrice: parseFloat(order.totalPriceSet?.shopMoney?.amount || '0'),
+            currency: order.totalPriceSet?.shopMoney?.currencyCode,
+            status: order.displayFinancialStatus?.toLowerCase() || 'pending',
+            createdAt: new Date(order.createdAt),
+            billingAddress: order.billingAddress ? {
+                address1: order.billingAddress.address1,
+                city: order.billingAddress.city,
+                country: order.billingAddress.country,
+                zip: order.billingAddress.zip
             } : undefined,
             originalData: order
         }));
@@ -237,142 +401,206 @@ export class ShopifySource implements ISourceConnector {
 
     async getPosts(onProgress?: (progress: number) => void): Promise<UniversalPost[]> {
         if (!this.client) throw new Error('Not connected');
-        
-        // 1. Fetch all blogs
-        const blogsResponse = await this.client.get('/blogs.json');
-        const blogs = blogsResponse.data.blogs;
-        
-        // Note: Getting total article count is tricky as it's per blog. 
-        // We'll skip precise progress for posts/pages or estimate.
-        
-        let allArticles: any[] = [];
-        
-        // 2. Fetch articles for each blog with pagination
-        for (const blog of blogs) {
-            let url = `/blogs/${blog.id}/articles.json?limit=250`;
-            while (url) {
-                const response = await this.client.get(url);
-                allArticles = [...allArticles, ...response.data.articles];
-                
-                // Simple progress: just report something to show activity
-                if (onProgress) onProgress(50); 
 
-                const linkHeader = response.headers.link;
-                if (linkHeader && linkHeader.includes('rel="next"')) {
-                    const match = linkHeader.match(/<([^>]+)>; rel="next"/);
-                    if (match) {
-                        url = match[1];
-                    } else {
-                        url = '';
+        // 1. Get total count (approximate, hard to get exact total of all articles across all blogs efficiently without iterating)
+        // We'll skip total count for posts or just report progress per blog
+        
+        let allPosts: any[] = [];
+        
+        // Fetch all blogs first
+        const blogsQuery = `
+            query {
+                blogs(first: 50) {
+                    edges {
+                        node {
+                            id
+                            title
+                        }
                     }
-                } else {
-                    url = '';
                 }
+            }
+        `;
+        
+        const blogsRes = await this.client.request(blogsQuery);
+        const blogs = blogsRes.data?.blogs?.edges.map((e: any) => e.node) || [];
+
+        for (const blog of blogs) {
+            let hasNextPage = true;
+            let endCursor: string | null = null;
+
+            while (hasNextPage) {
+                const query = `
+                    query getArticles($blogId: ID!, $cursor: String) {
+                        blog(id: $blogId) {
+                            articles(first: 50, after: $cursor) {
+                                pageInfo {
+                                    hasNextPage
+                                    endCursor
+                                }
+                                edges {
+                                    node {
+                                        id
+                                        title
+                                        bodyHtml
+                                        handle
+                                        publishedAt
+                                        authorV2 {
+                                            name
+                                            email
+                                        }
+                                        tags
+                                        image {
+                                            url
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                `;
+
+                const response: any = await this.client.request(query, { 
+                    variables: { blogId: blog.id, cursor: endCursor } 
+                });
+
+                if (response.errors) {
+                    console.error('Error fetching articles for blog', blog.id, response.errors);
+                    break;
+                }
+
+                const data = response.data?.blog?.articles;
+                const nodes = data?.edges.map((edge: any) => edge.node) || [];
+                
+                const mappedPosts = nodes.map((p: any) => ({
+                    originalId: p.id.split('/').pop(),
+                    title: p.title,
+                    content: p.bodyHtml,
+                    slug: p.handle,
+                    status: p.publishedAt ? 'publish' : 'draft',
+                    authorId: p.authorV2?.email, // Use email as ID for mapping
+                    authorName: p.authorV2?.name,
+                    categories: [blog.title],
+                    tags: p.tags,
+                    featuredImage: p.image?.url,
+                    createdAt: new Date(p.publishedAt || Date.now()),
+                    originalData: p
+                }));
+
+                allPosts = [...allPosts, ...mappedPosts];
+
+                // Simple progress reporting (just updates as we fetch)
+                if (onProgress) {
+                    onProgress(50); // Indeterminate progress
+                }
+
+                hasNextPage = data?.pageInfo?.hasNextPage || false;
+                endCursor = data?.pageInfo?.endCursor || null;
             }
         }
         
         if (onProgress) onProgress(100);
 
-        return allArticles.map((article: any) => ({
-            originalId: article.id.toString(),
-            title: article.title,
-            content: article.body_html,
-            slug: article.handle,
-            status: article.published_at ? 'publish' : 'draft',
-            authorId: article.user_id?.toString(),
-            authorName: article.author,
-            tags: article.tags ? article.tags.split(',').map((t: string) => t.trim()) : [],
-            featuredImage: article.image?.src,
-            createdAt: new Date(article.created_at),
-            updatedAt: new Date(article.updated_at),
-            originalData: article
-        }));
+        return allPosts;
     }
 
     async getPages(onProgress?: (progress: number) => void): Promise<UniversalPage[]> {
         if (!this.client) throw new Error('Not connected');
-        
+
+        // 1. Get total count
         let total = 0;
         try {
-            const countRes = await this.client.get('/pages/count.json');
-            total = countRes.data.count;
+            const countQuery = `query { pagesCount { count } }`;
+            const countRes = await this.client.request(countQuery);
+            total = countRes.data?.pagesCount?.count || 0;
         } catch (e) {
             console.warn('Failed to fetch page count', e);
         }
 
         let allPages: any[] = [];
-        let url = '/pages.json?limit=250';
+        let hasNextPage = true;
+        let endCursor: string | null = null;
 
-        while (url) {
-            const response = await this.client.get(url);
-            allPages = [...allPages, ...response.data.pages];
+        while (hasNextPage) {
+            const query = `
+                query getPages($cursor: String) {
+                    pages(first: 50, after: $cursor) {
+                        pageInfo {
+                            hasNextPage
+                            endCursor
+                        }
+                        edges {
+                            node {
+                                id
+                                title
+                                bodyHtml
+                                handle
+                                createdAt
+                                updatedAt
+                                publishedAt
+                            }
+                        }
+                    }
+                }
+            `;
+
+            const response: any = await this.client.request(query, { variables: { cursor: endCursor } });
+            
+            if (response.errors) {
+                throw new Error(response.errors.map((e: any) => e.message).join(', '));
+            }
+
+            const data = response.data?.pages;
+            const nodes = data?.edges.map((edge: any) => edge.node) || [];
+            allPages = [...allPages, ...nodes];
 
             if (onProgress && total > 0) {
                 onProgress(Math.min(100, Math.round((allPages.length / total) * 100)));
             }
 
-            const linkHeader = response.headers.link;
-            if (linkHeader && linkHeader.includes('rel="next"')) {
-                const match = linkHeader.match(/<([^>]+)>; rel="next"/);
-                if (match) {
-                    url = match[1];
-                } else {
-                    url = '';
-                }
-            } else {
-                url = '';
-            }
+            hasNextPage = data?.pageInfo?.hasNextPage || false;
+            endCursor = data?.pageInfo?.endCursor || null;
         }
 
-        return allPages.map((page: any) => ({
-            originalId: page.id.toString(),
-            title: page.title,
-            content: page.body_html,
-            slug: page.handle,
-            status: page.published_at ? 'publish' : 'draft',
-            authorId: undefined, // Pages in Shopify might not have user_id exposed easily
-            authorName: page.author,
-            createdAt: new Date(page.created_at),
-            updatedAt: new Date(page.updated_at),
-            originalData: page
+        return allPages.map((p: any) => ({
+            originalId: p.id.split('/').pop(),
+            title: p.title,
+            content: p.bodyHtml,
+            slug: p.handle,
+            status: p.publishedAt ? 'publish' : 'draft',
+            createdAt: new Date(p.createdAt),
+            updatedAt: new Date(p.updatedAt || p.createdAt),
+            authorName: 'Admin', // Shopify pages don't strictly have authors in the same way
+            originalData: p
         }));
     }
 
     async getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages'): Promise<string[]> {
-        if (!this.client) throw new Error('Not connected');
-        
-        if (entityType === 'posts') {
-            // Try to find an article in the first few blogs
-            const blogs = await this.client.get('/blogs.json?limit=5');
-            for (const blog of blogs.data.blogs) {
-                const articles = await this.client.get(`/blogs/${blog.id}/articles.json?limit=1`);
-                if (articles.data.articles.length > 0) {
-                    return Object.keys(articles.data.articles[0]);
-                }
-            }
-            
-            // Fallback: Return standard Shopify Article fields if no articles found
-            return [
-                'id', 'title', 'body_html', 'blog_id', 'author', 'user_id', 
-                'published_at', 'created_at', 'updated_at', 'summary_html', 
-                'template_suffix', 'handle', 'tags', 'image'
-            ];
-        }
-
-        let endpoint = '';
+        // Return the fields we are explicitly fetching in our GraphQL queries
         switch (entityType) {
-            case 'products': endpoint = '/products.json?limit=1'; break;
-            case 'customers': endpoint = '/customers.json?limit=1'; break;
-            case 'orders': endpoint = '/orders.json?limit=1&status=any'; break;
-            case 'pages': endpoint = '/pages.json?limit=1'; break;
+            case 'products':
+                return ['id', 'title', 'descriptionHtml', 'vendor', 'productType', 'status', 'tags', 'options', 'images', 'variants'];
+            case 'customers':
+                return [
+                    'id', 'email', 'firstName', 'lastName', 'phone', 'note', 'state', 'tags', 
+                    'taxExempt', 'verifiedEmail', 'createdAt', 'updatedAt', 'numberOfOrders', 
+                    'amountSpent', 'defaultAddress', 'addresses', 'lastOrder', 'metafields',
+                    'emailMarketingConsent', 'smsMarketingConsent'
+                ];
+            case 'orders':
+                return [
+                    'id', 'name', 'email', 'createdAt', 'totalPriceSet', 'displayFinancialStatus', 
+                    'customer', 'lineItems', 'billingAddress'
+                ];
+            case 'posts':
+                return [
+                    'id', 'title', 'bodyHtml', 'handle', 'publishedAt', 'authorV2', 'tags', 'image'
+                ];
+            case 'pages':
+                return [
+                    'id', 'title', 'bodyHtml', 'handle', 'createdAt', 'updatedAt', 'publishedAt'
+                ];
+            default:
+                return [];
         }
-        
-        const response = await this.client.get(endpoint);
-        const items = response.data[entityType];
-        
-        if (items && items.length > 0) {
-            return Object.keys(items[0]);
-        }
-        return [];
     }
 }

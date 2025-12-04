@@ -29,6 +29,8 @@
     "zod": "^4.1.13"
   },
   "dependencies": {
+    "@shopify/admin-api-client": "^1.1.1",
+    "@shopify/shopify-api": "^12.1.2",
     "@types/better-sqlite3": "^7.6.13",
     "better-sqlite3": "^11.8.1",
     "clsx": "^2.1.1",
