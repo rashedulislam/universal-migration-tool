@@ -96,6 +96,15 @@ export class ShopifySource implements ISourceConnector {
                                     name
                                     values
                                 }
+                                metafields(first: 25) {
+                                    edges {
+                                        node {
+                                            namespace
+                                            key
+                                            value
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -138,6 +147,10 @@ export class ShopifySource implements ISourceConnector {
                 price: parseFloat(v.node.price),
                 options: {} // Simplified
             })),
+            metafields: p.metafields?.edges.reduce((acc: any, edge: any) => {
+                acc[`${edge.node.namespace}.${edge.node.key}`] = edge.node.value;
+                return acc;
+            }, {}),
             originalData: p
         }));
     }
@@ -347,6 +360,15 @@ export class ShopifySource implements ISourceConnector {
                                     country
                                     zip
                                 }
+                                metafields(first: 25) {
+                                    edges {
+                                        node {
+                                            namespace
+                                            key
+                                            value
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -398,6 +420,10 @@ export class ShopifySource implements ISourceConnector {
                 country: order.billingAddress.country,
                 zip: order.billingAddress.zip
             } : undefined,
+            metafields: order.metafields?.edges.reduce((acc: any, edge: any) => {
+                acc[`${edge.node.namespace}.${edge.node.key}`] = edge.node.value;
+                return acc;
+            }, {}),
             originalData: order
         }));
     }
@@ -455,6 +481,15 @@ export class ShopifySource implements ISourceConnector {
                                         image {
                                             url
                                         }
+                                        metafields(first: 25) {
+                                            edges {
+                                                node {
+                                                    namespace
+                                                    key
+                                                    value
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -486,6 +521,10 @@ export class ShopifySource implements ISourceConnector {
                     tags: p.tags,
                     featuredImage: p.image?.url,
                     createdAt: new Date(p.publishedAt || Date.now()),
+                    metafields: p.metafields?.edges.reduce((acc: any, edge: any) => {
+                        acc[`${edge.node.namespace}.${edge.node.key}`] = edge.node.value;
+                        return acc;
+                    }, {}),
                     originalData: p
                 }));
 
@@ -540,6 +579,15 @@ export class ShopifySource implements ISourceConnector {
                                 createdAt
                                 updatedAt
                                 publishedAt
+                                metafields(first: 25) {
+                                    edges {
+                                        node {
+                                            namespace
+                                            key
+                                            value
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -573,6 +621,10 @@ export class ShopifySource implements ISourceConnector {
             createdAt: new Date(p.createdAt),
             updatedAt: new Date(p.updatedAt || p.createdAt),
             authorName: 'Admin', // Shopify pages don't strictly have authors in the same way
+            metafields: p.metafields?.edges.reduce((acc: any, edge: any) => {
+                acc[`${edge.node.namespace}.${edge.node.key}`] = edge.node.value;
+                return acc;
+            }, {}),
             originalData: p
         }));
     }

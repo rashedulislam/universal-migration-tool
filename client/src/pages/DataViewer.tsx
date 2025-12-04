@@ -114,14 +114,14 @@ export function DataViewer() {
       ];
       case 'orders': return [
         'orderNumber', 'status', 'currency', 'totalPrice', 'email', 
-        'customer', 'lineItems', 'billingAddress', 'shippingAddress', 'createdAt'
+        'customer', 'lineItems', 'billingAddress', 'shippingAddress', 'createdAt', 'metafields'
       ];
       case 'posts': return [
         'title', 'slug', 'status', 'authorName', 'categories', 'tags', 
-        'featuredImage', 'content', 'createdAt', 'updatedAt'
+        'featuredImage', 'content', 'createdAt', 'updatedAt', 'metafields'
       ];
       case 'pages': return [
-        'title', 'slug', 'status', 'authorName', 'content', 'createdAt', 'updatedAt'
+        'title', 'slug', 'status', 'authorName', 'content', 'createdAt', 'updatedAt', 'metafields'
       ];
       default: return ['id'];
     }

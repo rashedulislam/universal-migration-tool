@@ -84,6 +84,7 @@ export interface UniversalOrder {
     createdAt: Date;
     billingAddress?: UniversalAddress;
     shippingAddress?: UniversalAddress;
+    metafields?: Record<string, any>;
     originalData?: any;
     mappedFields?: Record<string, any>;
 }
@@ -111,6 +112,7 @@ export interface UniversalPost {
     featuredImage?: string;
     createdAt: Date;
     updatedAt: Date;
+    metafields?: Record<string, any>;
     originalData?: any;
     mappedFields?: Record<string, any>;
 }
@@ -126,6 +128,7 @@ export interface UniversalPage {
     authorName?: string;
     createdAt: Date;
     updatedAt: Date;
+    metafields?: Record<string, any>;
     originalData?: any;
     mappedFields?: Record<string, any>;
 }
