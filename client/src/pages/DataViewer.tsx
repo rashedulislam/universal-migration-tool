@@ -92,9 +92,17 @@ export function DataViewer() {
 
   // Helper to render cell content safely
   const renderCell = (item: any, field: string) => {
+    if (!item) return '';
     const value = item[field];
-    if (typeof value === 'object') return JSON.stringify(value).substring(0, 50) + '...';
-    return value;
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'object') {
+      return (
+        <pre className="whitespace-pre-wrap text-xs font-mono bg-gray-900/50 p-2 rounded max-h-[200px] overflow-y-auto min-w-[300px]">
+          {JSON.stringify(value, null, 2)}
+        </pre>
+      );
+    }
+    return String(value);
   };
 
   // Dynamic columns based on entity type
@@ -220,13 +228,13 @@ export function DataViewer() {
                 <tbody>
                   {items.map((item) => (
                     <tr key={item.id} className="border-b border-gray-700/50 hover:bg-gray-700/30 transition-colors">
-                      <td className="p-4 text-gray-300 font-mono text-xs">{item.originalId}</td>
+                      <td className="p-4 text-gray-300 font-mono text-xs align-top">{item.originalId}</td>
                       {getColumns().map(col => (
-                        <td key={col} className="p-4 text-gray-300 text-sm whitespace-nowrap max-w-[200px] overflow-hidden text-ellipsis">
+                        <td key={col} className="p-4 text-gray-300 text-sm align-top">
                           {renderCell(item.data, col)}
                         </td>
                       ))}
-                      <td className="p-4 text-gray-500 text-xs text-right whitespace-nowrap">
+                      <td className="p-4 text-gray-500 text-xs text-right whitespace-nowrap align-top">
                         {new Date(item.syncedAt).toLocaleString()}
                       </td>
                     </tr>
