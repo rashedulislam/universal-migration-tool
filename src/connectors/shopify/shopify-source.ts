@@ -142,6 +142,24 @@ export class ShopifySource implements ISourceConnector {
                 country: a.country,
                 zip: a.zip,
             })),
+            currency: c.currency,
+            createdAt: new Date(c.created_at),
+            updatedAt: new Date(c.updated_at),
+            ordersCount: c.orders_count,
+            totalSpent: c.total_spent,
+            state: c.state,
+            tags: c.tags ? c.tags.split(',').map((t: string) => t.trim()) : [],
+            note: c.note,
+            verifiedEmail: c.verified_email,
+            taxExempt: c.tax_exempt,
+            lastOrderId: c.last_order_id?.toString(),
+            lastOrderName: c.last_order_name,
+            multipassIdentifier: c.multipass_identifier,
+            marketingOptInLevel: c.marketing_opt_in_level,
+            taxExemptions: c.tax_exemptions,
+            emailMarketingConsent: c.email_marketing_consent,
+            smsMarketingConsent: c.sms_marketing_consent,
+            defaultAddress: c.default_address,
             originalData: c
         }));
     }
@@ -189,7 +207,8 @@ export class ShopifySource implements ISourceConnector {
                 email: order.email || order.customer?.email,
                 firstName: order.customer?.first_name,
                 lastName: order.customer?.last_name,
-                phone: order.customer?.phone
+                phone: order.customer?.phone,
+                addresses: [] // Simplified for nested object
             },
             lineItems: order.line_items.map((item: any) => ({
                 title: item.title,

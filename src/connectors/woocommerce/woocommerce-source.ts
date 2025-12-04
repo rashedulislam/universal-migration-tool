@@ -160,9 +160,11 @@ export class WooCommerceSource implements ISourceConnector {
             status: o.status === 'completed' ? 'paid' : 'pending',
             createdAt: new Date(o.date_created),
             customer: {
+                originalId: o.customer_id?.toString(),
                 email: o.billing.email,
                 firstName: o.billing.first_name,
-                lastName: o.billing.last_name
+                lastName: o.billing.last_name,
+                addresses: [] // Simplified for nested object
             },
             lineItems: o.line_items.map((l: any) => ({
                 title: l.name,

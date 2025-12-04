@@ -28,14 +28,30 @@ export interface UniversalVariant {
 }
 
 export interface UniversalCustomer {
-    id?: string;
-    originalId?: string;
-    email: string;
+    originalId: string;
+    email?: string;
     firstName?: string;
     lastName?: string;
     phone?: string;
-    addresses?: UniversalAddress[];
+    addresses: UniversalAddress[];
+    currency?: string;
     createdAt?: Date;
+    updatedAt?: Date;
+    ordersCount?: number;
+    totalSpent?: string;
+    state?: string;
+    tags?: string[];
+    note?: string;
+    verifiedEmail?: boolean;
+    taxExempt?: boolean;
+    lastOrderId?: string;
+    lastOrderName?: string;
+    multipassIdentifier?: string;
+    marketingOptInLevel?: string;
+    taxExemptions?: string[];
+    emailMarketingConsent?: any;
+    smsMarketingConsent?: any;
+    defaultAddress?: any;
     originalData?: any;
     mappedFields?: Record<string, any>;
 }

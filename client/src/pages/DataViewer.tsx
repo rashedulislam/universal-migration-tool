@@ -101,7 +101,14 @@ export function DataViewer() {
   const getColumns = () => {
     switch (activeTab) {
       case 'products': return ['title', 'sku', 'price', 'currency', 'status', 'vendor', 'product_type'];
-      case 'customers': return ['email', 'firstName', 'lastName', 'phone', 'orders_count', 'total_spent', 'currency'];
+      case 'customers': return [
+        'firstName', 'lastName', 'email', 'phone', 
+        'ordersCount', 'totalSpent', 'currency', 'state', 'verifiedEmail', 
+        'taxExempt', 'tags', 'note', 'lastOrderId', 'lastOrderName',
+        'multipassIdentifier', 'marketingOptInLevel', 'taxExemptions',
+        'emailMarketingConsent', 'smsMarketingConsent', 'defaultAddress',
+        'addresses', 'createdAt', 'updatedAt'
+      ];
       case 'orders': return ['orderNumber', 'totalPrice', 'currency', 'status', 'email', 'createdAt'];
       case 'posts': return ['title', 'slug', 'status', 'authorName', 'categories', 'tags', 'createdAt'];
       case 'pages': return ['title', 'slug', 'status', 'authorName', 'createdAt'];
