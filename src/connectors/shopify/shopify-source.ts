@@ -118,7 +118,7 @@ export class ShopifySource implements ISourceConnector {
             } catch (error: any) {
                 if (error.graphQLErrors) {
                     const messages = error.graphQLErrors.map((e: any) => e.message).join(', ');
-                    throw new Error(`GraphQL Error: ${messages}`);
+                    throw new Error(messages);
                 }
                 throw error;
             }
@@ -263,7 +263,7 @@ export class ShopifySource implements ISourceConnector {
             } catch (error: any) {
                 if (error.graphQLErrors) {
                     const messages = error.graphQLErrors.map((e: any) => e.message).join(', ');
-                    throw new Error(`GraphQL Error: ${messages}`);
+                    throw new Error(messages);
                 }
                 throw error;
             }
@@ -402,7 +402,7 @@ export class ShopifySource implements ISourceConnector {
             } catch (error: any) {
                 if (error.graphQLErrors) {
                     const messages = error.graphQLErrors.map((e: any) => e.message).join(', ');
-                    throw new Error(`GraphQL Error: ${messages}`);
+                    throw new Error(messages);
                 }
                 throw error;
             }
@@ -536,7 +536,7 @@ export class ShopifySource implements ISourceConnector {
                 } catch (error: any) {
                     if (error.graphQLErrors) {
                         const messages = error.graphQLErrors.map((e: any) => e.message).join(', ');
-                        throw new Error(`GraphQL Error: ${messages}`);
+                        throw new Error(messages);
                     }
                     throw error;
                 }
@@ -646,7 +646,7 @@ export class ShopifySource implements ISourceConnector {
             } catch (error: any) {
                 if (error.graphQLErrors) {
                     const messages = error.graphQLErrors.map((e: any) => e.message).join(', ');
-                    throw new Error(`GraphQL Error: ${messages}`);
+                    throw new Error(messages);
                 }
                 throw error;
             }
@@ -654,7 +654,7 @@ export class ShopifySource implements ISourceConnector {
             if (response?.errors) {
                 if (response.errors.graphQLErrors) {
                     const messages = response.errors.graphQLErrors.map((e: any) => e.message).join(', ');
-                    throw new Error(`GraphQL Error: ${messages}`);
+                    throw new Error(messages);
                 }
                 const errors = Array.isArray(response.errors) ? response.errors : [response.errors];
                 throw new Error(errors.map((e: any) => e.message || JSON.stringify(e)).join(', '));
@@ -735,7 +735,7 @@ export class ShopifySource implements ISourceConnector {
             } catch (error: any) {
                 if (error.graphQLErrors) {
                     const messages = error.graphQLErrors.map((e: any) => e.message).join(', ');
-                    throw new Error(`GraphQL Error: ${messages}`);
+                    throw new Error(messages);
                 }
                 throw error;
             }
