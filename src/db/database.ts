@@ -48,7 +48,7 @@ function createSchema() {
         CREATE TABLE IF NOT EXISTS project_mappings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id TEXT NOT NULL,
-            entity_type TEXT NOT NULL CHECK(entity_type IN ('products', 'customers', 'orders', 'posts', 'pages')),
+            entity_type TEXT NOT NULL CHECK(entity_type IN ('products', 'customers', 'orders', 'posts', 'pages', 'categories')),
             enabled INTEGER DEFAULT 1,
             field_mappings TEXT,
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
@@ -61,7 +61,7 @@ function createSchema() {
         CREATE TABLE IF NOT EXISTS synced_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id TEXT NOT NULL,
-            entity_type TEXT NOT NULL CHECK(entity_type IN ('products', 'customers', 'orders', 'posts', 'pages')),
+            entity_type TEXT NOT NULL CHECK(entity_type IN ('products', 'customers', 'orders', 'posts', 'pages', 'categories')),
             original_id TEXT NOT NULL,
             data TEXT NOT NULL, -- JSON string
             synced_at DATETIME DEFAULT CURRENT_TIMESTAMP,

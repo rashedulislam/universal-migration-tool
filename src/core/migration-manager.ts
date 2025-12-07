@@ -15,6 +15,7 @@ export class MigrationManager {
         orders?: boolean | { enabled: boolean; fields: Record<string, string> }; 
         posts?: boolean | { enabled: boolean; fields: Record<string, string> }; 
         pages?: boolean | { enabled: boolean; fields: Record<string, string> }; 
+        categories?: boolean | { enabled: boolean; fields: Record<string, string> };
     }) {
         console.log(`Starting migration from ${this.source.name} to ${this.destination.name}...`);
 
@@ -43,6 +44,10 @@ export class MigrationManager {
 
             if (isEnabled(options.pages)) {
                 await this.migratePages(getMapping(options.pages));
+            }
+
+            if (isEnabled(options.categories)) {
+                await this.migrateCategories(getMapping(options.categories));
             }
 
             console.log('Migration completed successfully.');
@@ -152,6 +157,26 @@ export class MigrationManager {
         console.log('Importing pages to destination...');
         const results = await this.destination.importPages(pages);
         this.logResults('Pages', results);
+    }
+
+    private async migrateCategories(mapping: Record<string, string> = {}) {
+        console.log('Fetching categories from source...');
+        const categories = await this.source.getCategories();
+        console.log(`Fetched ${categories.length} categories.`);
+
+        // Apply Mapping
+        categories.forEach(c => {
+            c.mappedFields = {};
+            for (const [destField, srcField] of Object.entries(mapping)) {
+                if (c.originalData && c.originalData[srcField] !== undefined) {
+                    c.mappedFields[destField] = c.originalData[srcField];
+                }
+            }
+        });
+
+        console.log('Importing categories to destination...');
+        const results = await this.destination.importCategories(categories);
+        this.logResults('Categories', results);
     }
 
     private logResults(entity: string, results: ImportResult[]) {

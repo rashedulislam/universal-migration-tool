@@ -1,4 +1,5 @@
 import express from 'express';
+// Trigger restart for type updates
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -47,6 +48,9 @@ interface MigrationStatus {
         products: { success: number; failed: number };
         customers: { success: number; failed: number };
         orders: { success: number; failed: number };
+        posts: { success: number; failed: number };
+        pages: { success: number; failed: number };
+        categories: { success: number; failed: number };
     };
 }
 
@@ -58,11 +62,12 @@ let activeMigration: MigrationStatus = {
     stats: {
         products: { success: 0, failed: 0 },
         customers: { success: 0, failed: 0 },
-        orders: { success: 0, failed: 0 }
+        orders: { success: 0, failed: 0 },
+        posts: { success: 0, failed: 0 },
+        pages: { success: 0, failed: 0 },
+        categories: { success: 0, failed: 0 }
     }
 };
-
-// Database is now initialized, no file helper functions needed
 
 // --- Socket.IO ---
 io.on('connection', (socket) => {
@@ -140,7 +145,8 @@ app.post('/api/projects', async (req, res) => {
             customers: { enabled: true, fields: {} },
             orders: { enabled: true, fields: {} },
             posts: { enabled: true, fields: {} },
-            pages: { enabled: true, fields: {} }
+            pages: { enabled: true, fields: {} },
+            categories: { enabled: true, fields: {} }
         }
     };
     
@@ -148,8 +154,6 @@ app.post('/api/projects', async (req, res) => {
     
     res.json(newProject);
 });
-
-// ... (existing code)
 
 // Get Schema for Mapping
 app.get('/api/projects/:id/schema', async (req, res) => {
@@ -189,17 +193,6 @@ app.get('/api/projects/:id/schema', async (req, res) => {
             return res.status(400).json({ message: `Destination Connection Failed: ${err.message}` });
         }
 
-        // Debug logging to check available methods
-        console.log('Source type:', source.constructor.name);
-        console.log('Source prototype:', Object.getPrototypeOf(source));
-        console.log('Source keys:', Object.keys(source));
-        
-        if (typeof source.getExportFields !== 'function') {
-             console.error('CRITICAL ERROR: source.getExportFields is not a function!');
-             console.error('Source object:', source);
-             throw new Error(`Source connector (${source.constructor.name}) does not implement getExportFields`);
-        }
-
         // Helper to safely fetch fields without crashing the whole request
         const getFieldsSafe = async (fn: () => Promise<string[]>, context: string) => {
             try {
@@ -230,6 +223,10 @@ app.get('/api/projects/:id/schema', async (req, res) => {
             pages: {
                 source: await getFieldsSafe(() => source.getExportFields('pages'), 'source pages'),
                 destination: await getFieldsSafe(() => destination.getImportFields('pages'), 'destination pages')
+            },
+            categories: {
+                source: await getFieldsSafe(() => source.getExportFields('categories'), 'source categories'),
+                destination: await getFieldsSafe(() => destination.getImportFields('categories'), 'destination categories')
             }
         };
 
@@ -241,7 +238,6 @@ app.get('/api/projects/:id/schema', async (req, res) => {
 });
 
 // Sync Source Data
-
 app.get('/api/projects/:id/sync', async (req, res) => {
     const { entity } = req.query; // 'products', 'customers', etc.
     const project = projectRepository.getProjectById(req.params.id);
@@ -280,6 +276,7 @@ app.get('/api/projects/:id/sync', async (req, res) => {
             case 'orders': items = await source.getOrders(onProgress); break;
             case 'posts': items = await source.getPosts(onProgress); break;
             case 'pages': items = await source.getPages(onProgress); break;
+            case 'categories': items = await source.getCategories(onProgress); break;
             default: 
                 sendEvent({ type: 'error', message: 'Invalid entity type' });
                 res.end();
@@ -334,7 +331,10 @@ app.post('/api/projects/:id/start', async (req, res) => {
         stats: {
             products: { success: 0, failed: 0 },
             customers: { success: 0, failed: 0 },
-            orders: { success: 0, failed: 0 }
+            orders: { success: 0, failed: 0 },
+            posts: { success: 0, failed: 0 },
+            pages: { success: 0, failed: 0 },
+            categories: { success: 0, failed: 0 }
         }
     };
     
@@ -379,7 +379,10 @@ app.post('/api/projects/:id/start', async (req, res) => {
             await manager.runMigration({
                 products: project.mapping?.products?.enabled ?? true,
                 customers: project.mapping?.customers?.enabled ?? true,
-                orders: project.mapping?.orders?.enabled ?? true
+                orders: project.mapping?.orders?.enabled ?? true,
+                posts: project.mapping?.posts?.enabled ?? true,
+                pages: project.mapping?.pages?.enabled ?? true,
+                categories: project.mapping?.categories?.enabled ?? true
             });
 
             activeMigration.isRunning = false;

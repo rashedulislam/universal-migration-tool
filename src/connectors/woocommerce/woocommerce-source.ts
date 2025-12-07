@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder, UniversalPost, UniversalPage } from '../../core/types';
+import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder, UniversalPost, UniversalPage, UniversalCategory } from '../../core/types';
 
 export class WooCommerceSource implements ISourceConnector {
     name = 'WooCommerce Source';
@@ -271,7 +271,24 @@ export class WooCommerceSource implements ISourceConnector {
         });
     }
 
-    async getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages'): Promise<string[]> {
+    async getCategories(onProgress?: (progress: number) => void): Promise<UniversalCategory[]> {
+        // WooCommerce source categories fetch not strictly required for this task (Shopify -> WC)
+        // But implementing for interface compliance.
+        if (!this.client) throw new Error('Not connected');
+        
+        // Basic implementation
+        const response = await this.client.get('/products/categories');
+        return response.data.map((c: any) => ({
+            originalId: c.id.toString(),
+            name: c.name,
+            slug: c.slug,
+            description: c.description,
+            image: c.image?.src,
+            originalData: c
+        }));
+    }
+
+    async getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories'): Promise<string[]> {
         if (!this.client) throw new Error('Not connected');
         
         let endpoint = '';
@@ -281,6 +298,7 @@ export class WooCommerceSource implements ISourceConnector {
             case 'orders': endpoint = '/wc/v3/orders?per_page=1'; break;
             case 'posts': endpoint = '/wp/v2/posts?per_page=1'; break;
             case 'pages': endpoint = '/wp/v2/pages?per_page=1'; break;
+            case 'categories': endpoint = '/products/categories?per_page=1'; break;
         }
         
         const response = await this.client.get(endpoint);

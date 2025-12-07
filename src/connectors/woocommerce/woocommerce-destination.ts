@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { IDestinationConnector, UniversalProduct, UniversalCustomer, UniversalOrder, ImportResult, UniversalPost, UniversalPage } from '../../core/types';
+import { IDestinationConnector, UniversalProduct, UniversalCustomer, UniversalOrder, ImportResult, UniversalPost, UniversalPage, UniversalCategory } from '../../core/types';
 
 export class WooCommerceDestination implements IDestinationConnector {
     name = 'WooCommerce Destination';
@@ -47,6 +47,12 @@ export class WooCommerceDestination implements IDestinationConnector {
                     regular_price: product.price.toString(),
                     sku: product.sku,
                     images: product.images.map(src => ({ src })),
+                    categories: product.categories?.map(c => ({ id: parseInt(c) })).filter(c => !isNaN(c.id)), // Assuming category IDs are passed
+                    tags: product.tags?.map(t => ({ name: t })),
+                    meta_data: product.metafields ? Object.entries(product.metafields).map(([key, value]) => ({
+                        key,
+                        value: String(value)
+                    })) : [],
                     ...product.mappedFields // Apply custom mappings
                 };
 
@@ -87,6 +93,18 @@ export class WooCommerceDestination implements IDestinationConnector {
                         country: customer.addresses?.[0]?.country,
                         postcode: customer.addresses?.[0]?.zip
                     },
+                    shipping: {
+                        first_name: customer.addresses?.[1]?.firstName || customer.firstName,
+                        last_name: customer.addresses?.[1]?.lastName || customer.lastName,
+                        address_1: customer.addresses?.[1]?.address1,
+                        city: customer.addresses?.[1]?.city,
+                        country: customer.addresses?.[1]?.country,
+                        postcode: customer.addresses?.[1]?.zip
+                    },
+                    meta_data: customer.metafields ? Object.entries(customer.metafields).map(([key, value]) => ({
+                        key,
+                        value: String(value)
+                    })) : [],
                     ...customer.mappedFields
                 };
 
@@ -125,6 +143,18 @@ export class WooCommerceDestination implements IDestinationConnector {
                         quantity: item.quantity,
                         total: item.price.toString()
                     })),
+                    shipping: {
+                        first_name: order.shippingAddress?.firstName,
+                        last_name: order.shippingAddress?.lastName,
+                        address_1: order.shippingAddress?.address1,
+                        city: order.shippingAddress?.city,
+                        country: order.shippingAddress?.country,
+                        postcode: order.shippingAddress?.zip
+                    },
+                    meta_data: order.metafields ? Object.entries(order.metafields).map(([key, value]) => ({
+                        key,
+                        value: String(value)
+                    })) : [],
                     ...order.mappedFields
                 };
 
@@ -194,31 +224,106 @@ export class WooCommerceDestination implements IDestinationConnector {
         return results;
     }
 
-    async getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages'): Promise<string[]> {
+    async importCategories(categories: UniversalCategory[]): Promise<ImportResult[]> {
+        if (!this.client) throw new Error('Not connected');
+        const results: ImportResult[] = [];
+
+        for (const cat of categories) {
+            try {
+                const wcCategory = {
+                    name: cat.name,
+                    slug: cat.slug,
+                    description: cat.description,
+                    image: cat.image ? { src: cat.image } : undefined,
+                    ...cat.mappedFields
+                };
+
+                const response = await this.client.post('/products/categories', wcCategory);
+                results.push({
+                    originalId: cat.originalId,
+                    newId: response.data.id.toString(),
+                    success: true
+                });
+            } catch (error: any) {
+                // If slug exists, try to find and update or skip
+                results.push({
+                    originalId: cat.originalId,
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+        return results;
+    }
+
+    async getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories'): Promise<string[]> {
         if (!this.client) throw new Error('Not connected');
 
-        // Return standard WooCommerce fields for import
+        const standardFields: string[] = [];
+        let endpoint = '';
+
+        // Standard writable fields
         switch (entityType) {
             case 'products':
-                return [
+                standardFields.push(
                     'name', 'type', 'regular_price', 'sale_price', 'description', 'short_description', 
                     'sku', 'images', 'categories', 'tags', 'weight', 'dimensions', 'manage_stock', 
                     'stock_quantity', 'status', 'catalog_visibility', 'reviews_allowed', 'attributes', 
-                    'default_attributes', 'menu_order', 'slug', 'date_created', 'date_modified'
-                ];
+                    'default_attributes', 'menu_order', 'slug', 'date_created', 'date_modified', 'meta_data'
+                );
+                endpoint = '/products?per_page=1';
+                break;
             case 'customers':
-                return ['email', 'first_name', 'last_name', 'username', 'billing', 'shipping', 'role'];
+                standardFields.push(
+                    'email', 'first_name', 'last_name', 'username', 'password', 
+                    'billing', 'shipping', 'role', 'date_created', 'date_modified', 
+                    'is_paying_customer', 'avatar_url', 'meta_data'
+                );
+                endpoint = '/customers?per_page=1';
+                break;
             case 'orders':
-                return [
+                standardFields.push(
                     'status', 'currency', 'billing', 'shipping', 'line_items', 'payment_method', 
-                    'payment_method_title', 'transaction_id', 'customer_note', 'date_created'
-                ];
+                    'payment_method_title', 'transaction_id', 'customer_note', 'date_created', 'meta_data'
+                );
+                endpoint = '/orders?per_page=1';
+                break;
             case 'posts':
-                return ['title', 'content', 'slug', 'status', 'author', 'categories', 'tags', 'date', 'featured_media'];
+                // Expanded logic for Posts
+                standardFields.push(
+                    'date', 'date_gmt', 'slug', 'status', 'password', 'title', 'content', 'author', 'excerpt', 
+                    'featured_media', 'comment_status', 'ping_status', 'format', 'meta', 'sticky', 'template', 
+                    'categories', 'tags'
+                );
+                endpoint = '/wp/v2/posts?per_page=1';
+                break;
             case 'pages':
-                return ['title', 'content', 'slug', 'status', 'author', 'date', 'parent'];
-            default:
-                return [];
+                // Expanded logic for Pages
+                standardFields.push(
+                    'date', 'date_gmt', 'slug', 'status', 'password', 'title', 'content', 'author', 'excerpt', 
+                    'featured_media', 'comment_status', 'ping_status', 'menu_order', 'meta', 'template', 'parent'
+                );
+                endpoint = '/wp/v2/pages?per_page=1';
+                break;
+            case 'categories':
+                standardFields.push('name', 'slug', 'parent', 'description', 'display', 'image', 'menu_order', 'count');
+                endpoint = '/products/categories?per_page=1';
+                break;
         }
+
+        try {
+            // Try to fetch one item to get dynamic fields (like custom meta if exposed, or just to verify keys)
+            const response = await this.client.get(endpoint);
+            const items = response.data;
+            if (items && items.length > 0) {
+                const dynamicFields = Object.keys(items[0]);
+                // Merge and deduplicate
+                return Array.from(new Set([...standardFields, ...dynamicFields]));
+            }
+        } catch (error) {
+            console.warn(`Failed to fetch dynamic fields for ${entityType}, falling back to standard list.`, error);
+        }
+
+        return standardFields;
     }
 }

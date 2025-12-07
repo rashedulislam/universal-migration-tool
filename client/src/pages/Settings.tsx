@@ -18,6 +18,7 @@ interface Project {
     orders: { enabled: boolean; fields: Record<string, string> };
     posts: { enabled: boolean; fields: Record<string, string> };
     pages: { enabled: boolean; fields: Record<string, string> };
+    categories: { enabled: boolean; fields: Record<string, string> };
   };
 }
 
@@ -30,78 +31,33 @@ export function SettingsPage() {
   const [schema, setSchema] = useState<{
     products: { source: string[], destination: string[] },
     customers: { source: string[], destination: string[] },
-    orders: { source: string[], destination: string[] }
+    orders: { source: string[], destination: string[] },
+    posts: { source: string[], destination: string[] },
+    pages: { source: string[], destination: string[] },
+    categories: { source: string[], destination: string[] }
   }>({
     products: { source: [], destination: [] },
     customers: { source: [], destination: [] },
     orders: { source: [], destination: [] },
     posts: { source: [], destination: [] },
-    pages: { source: [], destination: [] }
+    pages: { source: [], destination: [] },
+    categories: { source: [], destination: [] }
   });
 
   const [isFetchingSchema, setIsFetchingSchema] = useState(false);
   
   // Tab State
-  const [activeTab, setActiveTab] = useState<'products' | 'customers' | 'orders' | 'posts' | 'pages'>('products');
-  const [hiddenFields, setHiddenFields] = useState<Record<string, string[]>>({
-    products: [], customers: [], orders: [], posts: [], pages: []
-  });
-  const [customFields, setCustomFields] = useState<Record<string, string[]>>({
-    products: [], customers: [], orders: [], posts: [], pages: []
-  });
-  const [newField, setNewField] = useState('');
+  const [activeTab, setActiveTab] = useState<'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories'>('products');
 
-  // Helper to get all fields to display (Schema + Custom - Hidden)
-  const getDisplayFields = (entity: 'products' | 'customers' | 'orders' | 'posts' | 'pages') => {
-    const schemaFields = schema[entity]?.destination || [];
-    const mappedFields = project?.mapping?.[entity]?.fields ? Object.keys(project.mapping[entity].fields) : [];
-    const custom = customFields[entity] || [];
-    
-    // Union of all potential fields
-    const allFields = Array.from(new Set([...schemaFields, ...mappedFields, ...custom]));
-    
-    // Filter out hidden fields
-    return allFields.filter(f => !hiddenFields[entity]?.includes(f));
-  };
-
-  const removeField = (entity: 'products' | 'customers' | 'orders' | 'posts' | 'pages', field: string) => {
-    // Add to hidden fields
-    setHiddenFields(prev => ({
-      ...prev,
-      [entity]: [...(prev[entity] || []), field]
-    }));
-    
-    // Clear mapping
-    updateMapping(entity, field, '');
-  };
-
-  const addField = (entity: 'products' | 'customers' | 'orders' | 'posts' | 'pages') => {
-    if (!newField.trim()) return;
-    
-    // If it was hidden, unhide it
-    if (hiddenFields[entity]?.includes(newField)) {
-      setHiddenFields(prev => ({
-        ...prev,
-        [entity]: prev[entity].filter(f => f !== newField)
-      }));
-    } else {
-      // Add to custom fields
-      setCustomFields(prev => ({
-        ...prev,
-        [entity]: [...(prev[entity] || []), newField]
-      }));
-    }
-    setNewField('');
-  };
-
-  const updateMapping = (entity: 'products' | 'customers' | 'orders' | 'posts' | 'pages', destField: string, srcField: string) => {
+  const updateMapping = (entity: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories', destField: string, srcField: string) => {
     if (!project) return;
     const currentMapping = project.mapping || {
       products: { enabled: true, fields: {} },
       customers: { enabled: true, fields: {} },
       orders: { enabled: true, fields: {} },
       posts: { enabled: true, fields: {} },
-      pages: { enabled: true, fields: {} }
+      pages: { enabled: true, fields: {} },
+      categories: { enabled: true, fields: {} }
     };
     
     setProject({ 
@@ -166,11 +122,12 @@ export function SettingsPage() {
           customers: { enabled: true, fields: {} },
           orders: { enabled: true, fields: {} },
           posts: { enabled: true, fields: {} },
-          pages: { enabled: true, fields: {} }
+          pages: { enabled: true, fields: {} },
+          categories: { enabled: true, fields: {} }
         };
       }
 
-      (['products', 'customers', 'orders', 'posts', 'pages'] as const).forEach(entity => {
+      (['products', 'customers', 'orders', 'posts', 'pages', 'categories'] as const).forEach(entity => {
         const destFields = newSchema[entity]?.destination || [];
         // Initialize entity mapping if missing
         if (!newProject.mapping![entity]) {
@@ -220,23 +177,6 @@ export function SettingsPage() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const updateConfig = (side: 'source' | 'destination', field: string, value: string) => {
-    if (!project) return;
-    
-    // Helper to update deeply nested state safely
-    const newProject = { ...project };
-    if (field === 'url') {
-      newProject.config[side].url = value;
-    } else {
-      // Assume auth field
-      newProject.config[side].auth = {
-        ...newProject.config[side].auth,
-        [field]: value
-      };
-    }
-    setProject(newProject);
   };
 
   if (loading) return <div className="text-center p-12 text-gray-400">Loading settings...</div>;
@@ -374,7 +314,7 @@ export function SettingsPage() {
 
           {/* Tabs */}
           <div className="flex gap-2 mb-6 border-b border-gray-700">
-            {['products', 'customers', 'orders', 'posts', 'pages'].map((entity) => (
+            {['products', 'customers', 'orders', 'posts', 'pages', 'categories'].map((entity) => (
               <button
                 key={entity}
                 type="button"
@@ -425,26 +365,80 @@ export function SettingsPage() {
 
             {project.mapping?.[activeTab]?.enabled && (
               <div className="space-y-3">
-                {getDisplayFields(activeTab).length > 0 ? (
-                  getDisplayFields(activeTab).map((destField) => (
+                {Object.keys(project.mapping[activeTab].fields).length > 0 ? (
+                  Object.entries(project.mapping[activeTab].fields).map(([destField, srcField]) => (
                     <div key={destField} className="flex items-center gap-4 group">
-                      <div className="w-1/3 text-sm text-gray-400 text-right font-mono">{destField}</div>
+                      <div className="w-1/3">
+                         <select
+                            value={destField}
+                            onChange={(e) => {
+                                const newDest = e.target.value;
+                                if (newDest && newDest !== destField) {
+                                    // 1. Get current fields
+                                    const currentFields = { ...project.mapping[activeTab].fields };
+                                    const val = currentFields[destField];
+                                    
+                                    // 2. Remove old key
+                                    delete currentFields[destField];
+                                    
+                                    // 3. Add new key with same value
+                                    currentFields[newDest] = val;
+                                    
+                                    // 4. Update
+                                    setProject({
+                                        ...project,
+                                        mapping: {
+                                            ...project.mapping,
+                                            [activeTab]: {
+                                                ...project.mapping[activeTab],
+                                                fields: currentFields
+                                            }
+                                        }
+                                    });
+                                }
+                            }}
+                            className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:ring-1 focus:ring-blue-500 outline-none text-right"
+                         >
+                            {/* Option for the current field itself to ensure it shows up even if not in schema yet */}
+                            <option value={destField}>{destField}</option>
+                            {schema[activeTab]?.destination
+                                .filter(f => f !== destField) // Avoid duplicates with the current value
+                                .map((field: string) => (
+                                <option key={field} value={field}>{field}</option>
+                            ))}
+                         </select>
+                      </div>
+                      
                       <div className="text-gray-500">←</div>
+                      
                       <div className="w-1/2">
                         <select
-                          value={project.mapping?.[activeTab]?.fields?.[destField] || ''}
+                          value={srcField}
                           onChange={e => updateMapping(activeTab, destField, e.target.value)}
                           className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:ring-1 focus:ring-blue-500 outline-none"
                         >
                           <option value="">(Skip / Default)</option>
-                          {schema[activeTab]?.source.map((srcField: string) => (
-                            <option key={srcField} value={srcField}>{srcField}</option>
+                          {schema[activeTab]?.source.map((field: string) => (
+                            <option key={field} value={field}>{field}</option>
                           ))}
                         </select>
                       </div>
                       <button
                         type="button"
-                        onClick={() => removeField(activeTab, destField)}
+                        onClick={() => {
+                            const currentFields = { ...project.mapping[activeTab].fields };
+                            delete currentFields[destField];
+                            setProject({
+                                ...project,
+                                mapping: {
+                                    ...project.mapping,
+                                    [activeTab]: {
+                                        ...project.mapping[activeTab],
+                                        fields: currentFields
+                                    }
+                                }
+                            })
+                        }}
                         className="text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
                         title="Remove field"
                       >
@@ -454,38 +448,27 @@ export function SettingsPage() {
                   ))
                 ) : (
                   <div className="text-center py-8 text-gray-500 italic">
-                    No fields visible. Add a field to start mapping.
+                    No fields mapped. Add a field to start.
                   </div>
                 )}
 
                 {/* Add Field Row */}
-                <div className="mt-6 pt-4 border-t border-gray-800 flex items-center gap-4">
-                  <div className="w-1/3 flex justify-end">
-                    <input
-                      type="text"
-                      placeholder="New destination field..."
-                      value={newField}
-                      onChange={e => setNewField(e.target.value)}
-                      className="bg-gray-800 border border-gray-600 rounded px-3 py-1 text-white text-sm focus:ring-1 focus:ring-green-500 outline-none w-48 text-right"
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          addField(activeTab);
-                        }
-                      }}
-                    />
-                  </div>
-                  <div className="text-gray-500">←</div>
-                  <div className="w-1/2">
+                <div className="mt-6 pt-4 border-t border-gray-800 flex items-center justify-center">
                     <button
                       type="button"
-                      onClick={() => addField(activeTab)}
-                      className="text-sm text-green-400 hover:text-green-300 flex items-center gap-1"
+                      onClick={() => {
+                          const existingKeys = Object.keys(project.mapping[activeTab].fields);
+                          // Find first available field that isn't already mapped
+                          const availableFields = schema[activeTab]?.destination || [];
+                          const nextField = availableFields.find(f => !existingKeys.includes(f)) || 'new_field';
+                          
+                          updateMapping(activeTab, nextField, '');
+                      }}
+                      className="text-sm text-green-400 hover:text-green-300 flex items-center gap-1 border border-green-900 bg-green-900/20 px-4 py-2 rounded-lg"
                     >
                       <Plus size={16} />
-                      Add Field
+                      Add Mapping Row
                     </button>
-                  </div>
                 </div>
               </div>
             )}

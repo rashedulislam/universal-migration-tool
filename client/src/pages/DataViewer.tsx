@@ -12,7 +12,7 @@ interface SyncedItem {
 
 export function DataViewer() {
   const { projectId } = useParams();
-  const [activeTab, setActiveTab] = useState<'products' | 'customers' | 'orders' | 'posts' | 'pages'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories'>('products');
   const [items, setItems] = useState<SyncedItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -131,6 +131,9 @@ export function DataViewer() {
       case 'pages': return [
         'title', 'slug', 'status', 'authorName', 'content', 'createdAt', 'updatedAt', 'metafields'
       ];
+      case 'categories': return [
+        'name', 'slug', 'description', 'parent', 'image', 'count', 'metafields'
+      ];
       default: return ['id'];
     }
   };
@@ -184,7 +187,7 @@ export function DataViewer() {
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-gray-700">
-        {['products', 'customers', 'orders', 'posts', 'pages'].map((entity) => (
+        {['products', 'customers', 'orders', 'posts', 'pages', 'categories'].map((entity) => (
           <button
             key={entity}
             onClick={() => { setActiveTab(entity as any); setPage(1); }}

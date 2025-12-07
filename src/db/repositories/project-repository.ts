@@ -22,6 +22,7 @@ export interface Project {
         orders: { enabled: boolean; fields: Record<string, string> };
         posts: { enabled: boolean; fields: Record<string, string> };
         pages: { enabled: boolean; fields: Record<string, string> };
+        categories: { enabled: boolean; fields: Record<string, string> };
     };
     createdAt?: Date;
     updatedAt?: Date;
@@ -177,7 +178,8 @@ export class ProjectRepository {
             customers: { enabled: true, fields: {} },
             orders: { enabled: true, fields: {} },
             posts: { enabled: true, fields: {} },
-            pages: { enabled: true, fields: {} }
+            pages: { enabled: true, fields: {} },
+            categories: { enabled: true, fields: {} }
         };
 
         for (const m of mappings) {

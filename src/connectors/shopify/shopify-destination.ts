@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { IDestinationConnector, UniversalProduct, UniversalCustomer, UniversalOrder, ImportResult, UniversalPost, UniversalPage } from '../../core/types';
+import { IDestinationConnector, ImportResult, UniversalProduct, UniversalCustomer, UniversalOrder, UniversalPost, UniversalPage, UniversalCategory } from '../../core/types';
 
 export class ShopifyDestination implements IDestinationConnector {
     name = 'Shopify Destination';
@@ -46,12 +46,24 @@ export class ShopifyDestination implements IDestinationConnector {
                     product: {
                         title: product.title,
                         body_html: product.description,
+                        vendor: product.vendor,
+                        product_type: product.productType,
+                        tags: product.tags?.join(', '),
                         variants: product.variants?.map(v => ({
                             price: v.price,
                             sku: v.sku,
                             option1: v.options ? Object.values(v.options)[0] : 'Default Title'
                         })) || [{ price: product.price, sku: product.sku }],
-                        images: product.images.map(src => ({ src }))
+                        images: product.images.map(src => ({ src })),
+                        metafields: product.metafields ? Object.entries(product.metafields).map(([key, value]) => {
+                            const [namespace, k] = key.includes('.') ? key.split('.') : ['global', key];
+                            return {
+                                namespace,
+                                key: k,
+                                value: String(value),
+                                type: 'single_line_text_field' // Default type, can be improved with mapping
+                            };
+                        }) : []
                     }
                 };
 
@@ -84,12 +96,23 @@ export class ShopifyDestination implements IDestinationConnector {
                         last_name: customer.lastName,
                         email: customer.email,
                         phone: customer.phone,
+                        tags: customer.tags?.join(', '),
+                        note: customer.note,
                         addresses: customer.addresses?.map(a => ({
                             address1: a.address1,
                             city: a.city,
                             country: a.country,
                             zip: a.zip
-                        }))
+                        })),
+                        metafields: customer.metafields ? Object.entries(customer.metafields).map(([key, value]) => {
+                            const [namespace, k] = key.includes('.') ? key.split('.') : ['global', key];
+                            return {
+                                namespace,
+                                key: k,
+                                value: String(value),
+                                type: 'single_line_text_field'
+                            };
+                        }) : []
                     }
                 };
 
@@ -122,11 +145,37 @@ export class ShopifyDestination implements IDestinationConnector {
                     order: {
                         email: order.customer.email,
                         financial_status: order.status === 'paid' ? 'paid' : 'pending',
+                        tags: order.customer.tags?.join(', '), // Using customer tags as order tags for now, or could use order specific tags if available
                         line_items: order.lineItems.map(item => ({
                             title: item.title,
                             quantity: item.quantity,
                             price: item.price
-                        }))
+                        })),
+                        billing_address: order.billingAddress ? {
+                            address1: order.billingAddress.address1,
+                            city: order.billingAddress.city,
+                            country: order.billingAddress.country,
+                            zip: order.billingAddress.zip,
+                            first_name: order.billingAddress.firstName,
+                            last_name: order.billingAddress.lastName
+                        } : undefined,
+                        shipping_address: order.shippingAddress ? {
+                            address1: order.shippingAddress.address1,
+                            city: order.shippingAddress.city,
+                            country: order.shippingAddress.country,
+                            zip: order.shippingAddress.zip,
+                            first_name: order.shippingAddress.firstName,
+                            last_name: order.shippingAddress.lastName
+                        } : undefined,
+                        metafields: order.metafields ? Object.entries(order.metafields).map(([key, value]) => {
+                            const [namespace, k] = key.includes('.') ? key.split('.') : ['global', key];
+                            return {
+                                namespace,
+                                key: k,
+                                value: String(value),
+                                type: 'single_line_text_field'
+                            };
+                        }) : []
                     }
                 };
 
@@ -212,7 +261,17 @@ export class ShopifyDestination implements IDestinationConnector {
         return results;
     }
 
-    async getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages'): Promise<string[]> {
+    async importCategories(categories: UniversalCategory[]): Promise<ImportResult[]> {
+        // Shopify destination categories import not strictly required for this task (Shopify -> WC)
+        // But implementing for interface compliance.
+        return categories.map(c => ({
+            originalId: c.originalId,
+            success: false,
+            message: 'Importing Categories to Shopify is not yet implemented.'
+        }));
+    }
+
+    async getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories'): Promise<string[]> {
         // Return standard Shopify fields for import
         switch (entityType) {
             case 'products':

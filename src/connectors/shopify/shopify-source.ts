@@ -1,5 +1,5 @@
 import { createAdminApiClient, AdminApiClient } from '@shopify/admin-api-client';
-import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder, UniversalPost, UniversalPage } from '../../core/types';
+import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder, UniversalPost, UniversalPage, UniversalCategory } from '../../core/types';
 
 export class ShopifySource implements ISourceConnector {
     name = 'Shopify Source';
@@ -629,30 +629,112 @@ export class ShopifySource implements ISourceConnector {
         }));
     }
 
-    async getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages'): Promise<string[]> {
+    async getCategories(onProgress?: (progress: number) => void): Promise<UniversalCategory[]> {
+        if (!this.client) throw new Error('Not connected');
+
+        let allCollections: any[] = [];
+        let hasNextPage = true;
+        let endCursor: string | null = null;
+        let total = 0; // Approximate
+
+        while (hasNextPage) {
+             const query = `
+                query getCollections($cursor: String) {
+                    collections(first: 50, after: $cursor) {
+                        pageInfo {
+                            hasNextPage
+                            endCursor
+                        }
+                        edges {
+                            node {
+                                id
+                                title
+                                handle
+                                descriptionHtml
+                                image {
+                                    url
+                                }
+                                metafields(first: 10) {
+                                    edges {
+                                        node {
+                                            namespace
+                                            key
+                                            value
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            `;
+
+            const response: any = await this.client.request(query, { variables: { cursor: endCursor } });
+            
+            if (response.errors) {
+                 throw new Error(response.errors.map((e: any) => e.message).join(', '));
+            }
+
+            const data = response.data?.collections;
+            const nodes = data?.edges.map((edge: any) => edge.node) || [];
+            allCollections = [...allCollections, ...nodes];
+
+            if (onProgress) {
+                onProgress(50); // Indeterminate
+            }
+
+            hasNextPage = data?.pageInfo?.hasNextPage || false;
+            endCursor = data?.pageInfo?.endCursor || null;
+        }
+        
+        if (onProgress) onProgress(100);
+
+        return allCollections.map((c: any) => ({
+            originalId: c.id.split('/').pop(),
+            name: c.title,
+            slug: c.handle,
+            description: c.descriptionHtml,
+            image: c.image?.url,
+            metafields: c.metafields?.edges.reduce((acc: any, edge: any) => {
+                acc[`${edge.node.namespace}.${edge.node.key}`] = edge.node.value;
+                return acc;
+            }, {}),
+            originalData: c
+        }));
+    }
+
+    async getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories'): Promise<string[]> {
         // Return the fields we are explicitly fetching in our GraphQL queries
+        // Since we map GraphQL responses to Universal Types, we return the keys of those types primarily, 
+        // plus any known metafields or raw data keys if we were using REST.
+        // For GraphQL source, dynamic field discovery is harder without introspection.
+        // We will return standard field sets that match our mapping logic.
+        
         switch (entityType) {
             case 'products':
-                return ['id', 'title', 'descriptionHtml', 'vendor', 'productType', 'status', 'tags', 'options', 'images', 'variants'];
+                return ['title', 'description', 'vendor', 'productType', 'tags', 'sku', 'price', 'images', 'metafields'];
             case 'customers':
                 return [
-                    'id', 'email', 'firstName', 'lastName', 'phone', 'note', 'state', 'tags', 
-                    'taxExempt', 'verifiedEmail', 'createdAt', 'updatedAt', 'numberOfOrders', 
-                    'amountSpent', 'defaultAddress', 'addresses', 'lastOrder', 'metafields',
-                    'emailMarketingConsent', 'smsMarketingConsent'
+                    'email', 'firstName', 'lastName', 'phone', 'note', 'state', 'tags', 
+                    'taxExempt', 'verifiedEmail', 'createdAt', 'updatedAt', 'totalSpent', 
+                    'ordersCount', 'lastOrderName', 'metafields'
                 ];
             case 'orders':
                 return [
-                    'id', 'name', 'email', 'createdAt', 'totalPriceSet', 'displayFinancialStatus', 
-                    'customer', 'lineItems', 'billingAddress'
+                    'orderNumber', 'email', 'createdAt', 'totalPrice', 'currency', 'status', 
+                    'customer', 'lineItems', 'billingAddress', 'metafields'
                 ];
             case 'posts':
                 return [
-                    'id', 'title', 'bodyHtml', 'handle', 'publishedAt', 'authorV2', 'tags', 'image'
+                    'title', 'content', 'slug', 'status', 'authorName', 'tags', 'featuredImage', 'metafields'
                 ];
             case 'pages':
                 return [
-                    'id', 'title', 'bodyHtml', 'handle', 'createdAt', 'updatedAt', 'publishedAt'
+                    'title', 'content', 'slug', 'status', 'createdAt', 'metafields'
+                ];
+            case 'categories':
+                return [
+                     'name', 'slug', 'description', 'image', 'metafields'
                 ];
             default:
                 return [];

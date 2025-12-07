@@ -54,6 +54,7 @@ export interface UniversalCustomer {
     emailMarketingConsent?: any;
     smsMarketingConsent?: any;
     defaultAddress?: any;
+    metafields?: Record<string, any>;
     originalData?: any;
     mappedFields?: Record<string, any>;
 }
@@ -133,6 +134,19 @@ export interface UniversalPage {
     mappedFields?: Record<string, any>;
 }
 
+export interface UniversalCategory {
+    id?: string;
+    originalId?: string;
+    name: string;
+    slug?: string;
+    description?: string;
+    image?: string;
+    parent?: string; // Original ID of parent
+    metafields?: Record<string, any>;
+    originalData?: any;
+    mappedFields?: Record<string, any>;
+}
+
 export interface ISourceConnector {
     name: string;
     connect(): Promise<void>;
@@ -142,7 +156,8 @@ export interface ISourceConnector {
     getOrders(onProgress?: (progress: number) => void): Promise<UniversalOrder[]>;
     getPosts(onProgress?: (progress: number) => void): Promise<UniversalPost[]>;
     getPages(onProgress?: (progress: number) => void): Promise<UniversalPage[]>;
-    getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages'): Promise<string[]>;
+    getCategories(onProgress?: (progress: number) => void): Promise<UniversalCategory[]>;
+    getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories'): Promise<string[]>;
 }
 
 export interface IDestinationConnector {
@@ -154,7 +169,8 @@ export interface IDestinationConnector {
     importOrders(orders: UniversalOrder[]): Promise<ImportResult[]>;
     importPosts(posts: UniversalPost[]): Promise<ImportResult[]>;
     importPages(pages: UniversalPage[]): Promise<ImportResult[]>;
-    getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages'): Promise<string[]>;
+    importCategories(categories: UniversalCategory[]): Promise<ImportResult[]>;
+    getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories'): Promise<string[]>;
 }
 
 export interface ImportResult {
