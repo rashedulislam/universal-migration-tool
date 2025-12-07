@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { IDestinationConnector, UniversalProduct, UniversalCustomer, UniversalOrder, ImportResult, UniversalPost, UniversalPage, UniversalCategory } from '../../core/types';
+import { IDestinationConnector, UniversalProduct, UniversalCustomer, UniversalOrder, ImportResult, UniversalPost, UniversalPage, UniversalCategory, UniversalShippingZone, UniversalTaxRate, UniversalCoupon } from '../../core/types';
 
 export class WooCommerceDestination implements IDestinationConnector {
     name = 'WooCommerce Destination';
@@ -256,7 +256,127 @@ export class WooCommerceDestination implements IDestinationConnector {
         return results;
     }
 
-    async getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories'): Promise<string[]> {
+    async importShippingZones(zones: UniversalShippingZone[]): Promise<ImportResult[]> {
+        if (!this.client) throw new Error('Not connected');
+        const results: ImportResult[] = [];
+
+        for (const zone of zones) {
+            try {
+                // 1. Create Zone
+                const wcZone = {
+                    name: zone.name,
+                    ...zone.mappedFields
+                };
+                const zoneRes = await this.client.post('/shipping/zones', wcZone);
+                const newZoneId = zoneRes.data.id;
+
+                // 2. Add Methods (Simplified: just creating one flat rate if enabled in source methods, or skipping detail mapping for now)
+                // WooCommerce methods are separate endpoints /shipping/zones/:id/methods
+                // We will try to add methods if defined
+                for (const method of zone.methods) {
+                    if (method.enabled) {
+                        await this.client.post(`/shipping/zones/${newZoneId}/methods`, {
+                            method_id: 'flat_rate', // Defaulting to flat rate as a safe fallback
+                            settings: {
+                                title: method.title,
+                                cost: method.cost?.toString() || '0'
+                            }
+                        });
+                    }
+                }
+
+                results.push({
+                    originalId: zone.originalId,
+                    newId: newZoneId.toString(),
+                    success: true
+                });
+            } catch (error: any) {
+                results.push({
+                    originalId: zone.originalId,
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+        return results;
+    }
+
+    async importTaxRates(rates: UniversalTaxRate[]): Promise<ImportResult[]> {
+        if (!this.client) throw new Error('Not connected');
+        const results: ImportResult[] = [];
+
+        for (const rate of rates) {
+            try {
+                const wcTax = {
+                    name: rate.name,
+                    rate: rate.rate.toString(),
+                    country: rate.country || '',
+                    state: rate.state || '',
+                    city: rate.city || '',
+                    postcode: rate.postcode || '',
+                    shipping: rate.shipping || false,
+                    compound: rate.compound || false,
+                    priority: rate.priority || 1,
+                    ...rate.mappedFields
+                };
+
+                const response = await this.client.post('/taxes', wcTax);
+                results.push({
+                    originalId: rate.originalId,
+                    newId: response.data.id.toString(),
+                    success: true
+                });
+            } catch (error: any) {
+                results.push({
+                    originalId: rate.originalId,
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+        return results;
+    }
+
+    async importCoupons(coupons: UniversalCoupon[]): Promise<ImportResult[]> {
+        if (!this.client) throw new Error('Not connected');
+        const results: ImportResult[] = [];
+
+        for (const coupon of coupons) {
+            try {
+                const wcCoupon = {
+                    code: coupon.code,
+                    amount: coupon.amount.toString(),
+                    discount_type: coupon.discountType,
+                    description: coupon.description,
+                    date_expires: coupon.dateExpires ? coupon.dateExpires.toISOString() : null,
+                    usage_limit: coupon.usageLimit,
+                    usage_limit_per_user: coupon.usageLimitPerUser,
+                    individual_use: coupon.individualUse,
+                    free_shipping: coupon.freeShipping,
+                    minimum_amount: coupon.minimumAmount?.toString(),
+                    maximum_amount: coupon.maximumAmount?.toString(),
+                    exclude_sale_items: false, // Default
+                    ...coupon.mappedFields
+                };
+
+                const response = await this.client.post('/coupons', wcCoupon);
+                results.push({
+                    originalId: coupon.originalId,
+                    newId: response.data.id.toString(),
+                    success: true
+                });
+            } catch (error: any) {
+                 results.push({
+                    originalId: coupon.originalId,
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+        return results;
+    }
+
+    async getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons'): Promise<string[]> {
         if (!this.client) throw new Error('Not connected');
 
         const standardFields: string[] = [];
@@ -305,9 +425,20 @@ export class WooCommerceDestination implements IDestinationConnector {
                 );
                 endpoint = '/wp/v2/pages?per_page=1';
                 break;
-            case 'categories':
                 standardFields.push('name', 'slug', 'parent', 'description', 'display', 'image', 'menu_order', 'count');
                 endpoint = '/products/categories?per_page=1';
+                break;
+            case 'shipping_zones':
+                standardFields.push('name', 'order');
+                endpoint = '/shipping/zones?per_page=1';
+                break;
+            case 'taxes':
+                standardFields.push('country', 'state', 'postcode', 'city', 'rate', 'name', 'priority', 'compound', 'shipping');
+                endpoint = '/taxes?per_page=1';
+                break;
+            case 'coupons':
+                standardFields.push('code', 'amount', 'discount_type', 'description', 'date_expires', 'usage_limit', 'individual_use', 'product_ids', 'exclude_product_ids', 'usage_limit_per_user', 'limit_usage_to_x_items', 'free_shipping', 'product_categories', 'excluded_product_categories', 'exclude_sale_items', 'minimum_amount', 'maximum_amount', 'email_restrictions');
+                endpoint = '/coupons?per_page=1';
                 break;
         }
 

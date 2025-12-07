@@ -51,6 +51,9 @@ interface MigrationStatus {
         posts: { success: number; failed: number };
         pages: { success: number; failed: number };
         categories: { success: number; failed: number };
+        shipping_zones: { success: number; failed: number };
+        taxes: { success: number; failed: number };
+        coupons: { success: number; failed: number };
     };
 }
 
@@ -65,7 +68,10 @@ let activeMigration: MigrationStatus = {
         orders: { success: 0, failed: 0 },
         posts: { success: 0, failed: 0 },
         pages: { success: 0, failed: 0 },
-        categories: { success: 0, failed: 0 }
+        categories: { success: 0, failed: 0 },
+        shipping_zones: { success: 0, failed: 0 },
+        taxes: { success: 0, failed: 0 },
+        coupons: { success: 0, failed: 0 }
     }
 };
 
@@ -146,7 +152,10 @@ app.post('/api/projects', async (req, res) => {
             orders: { enabled: true, fields: {} },
             posts: { enabled: true, fields: {} },
             pages: { enabled: true, fields: {} },
-            categories: { enabled: true, fields: {} }
+            categories: { enabled: true, fields: {} },
+            shipping_zones: { enabled: true, fields: {} },
+            taxes: { enabled: true, fields: {} },
+            coupons: { enabled: true, fields: {} }
         }
     };
     
@@ -227,6 +236,18 @@ app.get('/api/projects/:id/schema', async (req, res) => {
             categories: {
                 source: await getFieldsSafe(() => source.getExportFields('categories'), 'source categories'),
                 destination: await getFieldsSafe(() => destination.getImportFields('categories'), 'destination categories')
+            },
+            shipping_zones: {
+                source: await getFieldsSafe(() => source.getExportFields('shipping_zones'), 'source shipping_zones'),
+                destination: await getFieldsSafe(() => destination.getImportFields('shipping_zones'), 'destination shipping_zones')
+            },
+            taxes: {
+                source: await getFieldsSafe(() => source.getExportFields('taxes'), 'source taxes'),
+                destination: await getFieldsSafe(() => destination.getImportFields('taxes'), 'destination taxes')
+            },
+            coupons: {
+                source: await getFieldsSafe(() => source.getExportFields('coupons'), 'source coupons'),
+                destination: await getFieldsSafe(() => destination.getImportFields('coupons'), 'destination coupons')
             }
         };
 
@@ -277,6 +298,9 @@ app.get('/api/projects/:id/sync', async (req, res) => {
             case 'posts': items = await source.getPosts(onProgress); break;
             case 'pages': items = await source.getPages(onProgress); break;
             case 'categories': items = await source.getCategories(onProgress); break;
+            case 'shipping_zones': items = await source.getShippingZones(onProgress); break;
+            case 'taxes': items = await source.getTaxRates(onProgress); break;
+            case 'coupons': items = await source.getCoupons(onProgress); break;
             default: 
                 sendEvent({ type: 'error', message: 'Invalid entity type' });
                 res.end();
@@ -334,7 +358,10 @@ app.post('/api/projects/:id/start', async (req, res) => {
             orders: { success: 0, failed: 0 },
             posts: { success: 0, failed: 0 },
             pages: { success: 0, failed: 0 },
-            categories: { success: 0, failed: 0 }
+            categories: { success: 0, failed: 0 },
+            shipping_zones: { success: 0, failed: 0 },
+            taxes: { success: 0, failed: 0 },
+            coupons: { success: 0, failed: 0 }
         }
     };
     
@@ -382,7 +409,10 @@ app.post('/api/projects/:id/start', async (req, res) => {
                 orders: project.mapping?.orders?.enabled ?? true,
                 posts: project.mapping?.posts?.enabled ?? true,
                 pages: project.mapping?.pages?.enabled ?? true,
-                categories: project.mapping?.categories?.enabled ?? true
+                categories: project.mapping?.categories?.enabled ?? true,
+                shipping_zones: project.mapping?.shipping_zones?.enabled ?? true,
+                taxes: project.mapping?.taxes?.enabled ?? true,
+                coupons: project.mapping?.coupons?.enabled ?? true
             });
 
             activeMigration.isRunning = false;

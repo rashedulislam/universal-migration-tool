@@ -16,6 +16,9 @@ export class MigrationManager {
         posts?: boolean | { enabled: boolean; fields: Record<string, string> }; 
         pages?: boolean | { enabled: boolean; fields: Record<string, string> }; 
         categories?: boolean | { enabled: boolean; fields: Record<string, string> };
+        shipping_zones?: boolean | { enabled: boolean; fields: Record<string, string> };
+        taxes?: boolean | { enabled: boolean; fields: Record<string, string> };
+        coupons?: boolean | { enabled: boolean; fields: Record<string, string> };
     }) {
         console.log(`Starting migration from ${this.source.name} to ${this.destination.name}...`);
 
@@ -48,6 +51,18 @@ export class MigrationManager {
 
             if (isEnabled(options.categories)) {
                 await this.migrateCategories(getMapping(options.categories));
+            }
+
+            if (isEnabled(options.shipping_zones)) {
+                await this.migrateShippingZones(getMapping(options.shipping_zones));
+            }
+
+            if (isEnabled(options.taxes)) {
+                await this.migrateTaxRates(getMapping(options.taxes));
+            }
+
+            if (isEnabled(options.coupons)) {
+                await this.migrateCoupons(getMapping(options.coupons));
             }
 
             console.log('Migration completed successfully.');
@@ -177,6 +192,66 @@ export class MigrationManager {
         console.log('Importing categories to destination...');
         const results = await this.destination.importCategories(categories);
         this.logResults('Categories', results);
+    }
+
+    private async migrateShippingZones(mapping: Record<string, string> = {}) {
+        console.log('Fetching shipping zones from source...');
+        const zones = await this.source.getShippingZones();
+        console.log(`Fetched ${zones.length} shipping zones.`);
+
+        // Apply Mapping
+        zones.forEach(z => {
+            z.mappedFields = {};
+            for (const [destField, srcField] of Object.entries(mapping)) {
+                if (z.originalData && z.originalData[srcField] !== undefined) {
+                    z.mappedFields[destField] = z.originalData[srcField];
+                }
+            }
+        });
+
+        console.log('Importing shipping zones to destination...');
+        const results = await this.destination.importShippingZones(zones);
+        this.logResults('Shipping Zones', results);
+    }
+
+    private async migrateTaxRates(mapping: Record<string, string> = {}) {
+        console.log('Fetching tax rates from source...');
+        const rates = await this.source.getTaxRates();
+        console.log(`Fetched ${rates.length} tax rates.`);
+
+        // Apply Mapping
+        rates.forEach(r => {
+            r.mappedFields = {};
+            for (const [destField, srcField] of Object.entries(mapping)) {
+                if (r.originalData && r.originalData[srcField] !== undefined) {
+                    r.mappedFields[destField] = r.originalData[srcField];
+                }
+            }
+        });
+
+        console.log('Importing tax rates to destination...');
+        const results = await this.destination.importTaxRates(rates);
+        this.logResults('Tax Rates', results);
+    }
+
+    private async migrateCoupons(mapping: Record<string, string> = {}) {
+        console.log('Fetching coupons from source...');
+        const coupons = await this.source.getCoupons();
+        console.log(`Fetched ${coupons.length} coupons.`);
+
+        // Apply Mapping
+        coupons.forEach(c => {
+            c.mappedFields = {};
+            for (const [destField, srcField] of Object.entries(mapping)) {
+                if (c.originalData && c.originalData[srcField] !== undefined) {
+                    c.mappedFields[destField] = c.originalData[srcField];
+                }
+            }
+        });
+
+        console.log('Importing coupons to destination...');
+        const results = await this.destination.importCoupons(coupons);
+        this.logResults('Coupons', results);
     }
 
     private logResults(entity: string, results: ImportResult[]) {

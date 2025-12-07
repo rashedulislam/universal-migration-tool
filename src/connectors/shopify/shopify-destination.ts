@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { IDestinationConnector, ImportResult, UniversalProduct, UniversalCustomer, UniversalOrder, UniversalPost, UniversalPage, UniversalCategory } from '../../core/types';
+import { IDestinationConnector, ImportResult, UniversalProduct, UniversalCustomer, UniversalOrder, UniversalPost, UniversalPage, UniversalCategory, UniversalShippingZone, UniversalTaxRate, UniversalCoupon } from '../../core/types';
 
 export class ShopifyDestination implements IDestinationConnector {
     name = 'Shopify Destination';
@@ -271,7 +271,19 @@ export class ShopifyDestination implements IDestinationConnector {
         }));
     }
 
-    async getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories'): Promise<string[]> {
+    async importShippingZones(zones: UniversalShippingZone[]): Promise<ImportResult[]> {
+        return zones.map(z => ({ originalId: z.originalId, success: false, error: 'Not implemented for Shopify' }));
+    }
+
+    async importTaxRates(rates: UniversalTaxRate[]): Promise<ImportResult[]> {
+        return rates.map(r => ({ originalId: r.originalId, success: false, error: 'Not implemented for Shopify' }));
+    }
+
+    async importCoupons(coupons: UniversalCoupon[]): Promise<ImportResult[]> {
+         return coupons.map(c => ({ originalId: c.originalId, success: false, error: 'Not implemented for Shopify' }));
+    }
+
+    async getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons'): Promise<string[]> {
         // Return standard Shopify fields for import
         switch (entityType) {
             case 'products':

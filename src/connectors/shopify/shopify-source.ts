@@ -1,5 +1,5 @@
 import { createAdminApiClient, AdminApiClient } from '@shopify/admin-api-client';
-import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder, UniversalPost, UniversalPage, UniversalCategory } from '../../core/types';
+import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder, UniversalPost, UniversalPage, UniversalCategory, UniversalShippingZone, UniversalTaxRate, UniversalCoupon } from '../../core/types';
 
 export class ShopifySource implements ISourceConnector {
     name = 'Shopify Source';
@@ -703,7 +703,186 @@ export class ShopifySource implements ISourceConnector {
         }));
     }
 
-    async getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories'): Promise<string[]> {
+    async getShippingZones(onProgress?: (progress: number) => void): Promise<UniversalShippingZone[]> {
+        // Shopify uses Delivery Profiles in GraphQL, which is complex. 
+        // We will fetch basic General Profile information as a "Zone" approximation.
+        if (!this.client) throw new Error('Not connected');
+
+        // Simplified implementation using DeliveryProfiles
+        const query = `
+            query {
+                deliveryProfiles(first: 10) {
+                    edges {
+                        node {
+                            id
+                            name
+                            profileLocationGroups {
+                                locationGroup {
+                                    id
+                                }
+                                locationGroupZones(first: 10) {
+                                    edges {
+                                        node {
+                                            zone {
+                                                id
+                                                name
+                                            }
+                                            methodDefinitions(first: 10) {
+                                                edges {
+                                                    node {
+                                                        id
+                                                        name
+                                                        rateProvider {
+                                                            ... on DeliveryRateDefinition {
+                                                                price {
+                                                                    amount
+                                                                    currencyCode
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        `;
+
+        try {
+            const response: any = await this.client.request(query);
+            const profiles = response.data?.deliveryProfiles?.edges || [];
+            
+            // Flatten zones from profiles
+            const zones: UniversalShippingZone[] = [];
+
+            profiles.forEach((p: any) => {
+                p.node.profileLocationGroups.forEach((group: any) => {
+                    group.locationGroupZones.edges.forEach((z: any) => {
+                        const zoneNode = z.node.zone;
+                        const methods = z.node.methodDefinitions.edges.map((m: any) => ({
+                            originalId: m.node.id.split('/').pop(),
+                            title: m.node.name,
+                            cost: parseFloat(m.node.rateProvider?.price?.amount || '0'),
+                            enabled: true
+                        }));
+
+                        zones.push({
+                            originalId: zoneNode.id.split('/').pop(),
+                            name: zoneNode.name,
+                            countries: [], // Countries mapping in GQL is deep, skipping for now
+                            methods: methods,
+                            originalData: z.node
+                        });
+                    });
+                });
+            });
+
+            if (onProgress) onProgress(100);
+            return zones;
+
+        } catch (error) {
+            console.warn('Failed to fetch shipping zones (delivery profiles)', error);
+            if (onProgress) onProgress(100);
+            return [];
+        }
+    }
+
+    async getTaxRates(onProgress?: (progress: number) => void): Promise<UniversalTaxRate[]> {
+        // Shopify GraphQL Admin API doesn't expose TaxRates easily (legacy REST does).
+        // Returning empty to comply with interface without crashing.
+        if (onProgress) onProgress(100);
+        return [];
+    }
+
+    async getCoupons(onProgress?: (progress: number) => void): Promise<UniversalCoupon[]> {
+        if (!this.client) throw new Error('Not connected');
+
+        let allCoupons: any[] = [];
+        let hasNextPage = true;
+        let endCursor: string | null = null;
+
+        while (hasNextPage) {
+            const query = `
+                query getPriceRules($cursor: String) {
+                    priceRules(first: 50, after: $cursor) {
+                        pageInfo {
+                            hasNextPage
+                            endCursor
+                        }
+                        edges {
+                            node {
+                                id
+                                title
+                                valueV2 {
+                                    ... on MoneyV2 {
+                                        amount
+                                    }
+                                    ... on PricingPercentageValue {
+                                        percentage
+                                    }
+                                }
+                                targetType
+                                startsAt
+                                endsAt
+                                usageLimit
+                                discountCodes(first: 10) {
+                                    edges {
+                                        node {
+                                            code
+                                            usageCount
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            `;
+
+            const response: any = await this.client.request(query, { variables: { cursor: endCursor } });
+            const data = response.data?.priceRules;
+            const nodes = data?.edges.map((edge: any) => edge.node) || [];
+            
+            allCoupons = [...allCoupons, ...nodes];
+            
+            if (onProgress) onProgress(50);
+            hasNextPage = data?.pageInfo?.hasNextPage || false;
+            endCursor = data?.pageInfo?.endCursor || null;
+        }
+
+        if (onProgress) onProgress(100);
+
+        // Map PriceRules to Coupons (Flattening codes)
+        const coupons: UniversalCoupon[] = [];
+        allCoupons.forEach(rule => {
+            const discountType = rule.valueV2?.percentage ? 'percent' : 'fixed_cart';
+            const amount = rule.valueV2?.percentage ? rule.valueV2.percentage : parseFloat(rule.valueV2?.amount || '0');
+            
+            // A price rule can have multiple codes, but usually one for migration mapping
+            rule.discountCodes?.edges.forEach((codeEdge: any) => {
+                coupons.push({
+                    originalId: rule.id.split('/').pop(),
+                    code: codeEdge.node.code,
+                    amount: amount,
+                    discountType: discountType,
+                    description: rule.title,
+                    dateExpires: rule.endsAt ? new Date(rule.endsAt) : undefined,
+                    usageLimit: rule.usageLimit,
+                    usageCount: codeEdge.node.usageCount,
+                    originalData: rule
+                });
+            });
+        });
+
+        return coupons;
+    }
+
+    async getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons'): Promise<string[]> {
         // Return the fields we are explicitly fetching in our GraphQL queries
         // Since we map GraphQL responses to Universal Types, we return the keys of those types primarily, 
         // plus any known metafields or raw data keys if we were using REST.
@@ -736,6 +915,12 @@ export class ShopifySource implements ISourceConnector {
                 return [
                      'name', 'slug', 'description', 'image', 'metafields'
                 ];
+            case 'shipping_zones':
+                return ['name', 'methods', 'countries'];
+            case 'taxes':
+                return ['name', 'rate', 'country', 'state'];
+            case 'coupons':
+                return ['code', 'amount', 'discountType', 'description', 'dateExpires', 'usageLimit'];
             default:
                 return [];
         }

@@ -147,6 +147,64 @@ export interface UniversalCategory {
     mappedFields?: Record<string, any>;
 }
 
+export interface UniversalShippingZone {
+    id?: string;
+    originalId?: string;
+    name: string;
+    countries: string[]; // List of country codes (e.g., 'US', 'CA')
+    methods: UniversalShippingMethod[];
+    originalData?: any;
+    mappedFields?: Record<string, any>;
+}
+
+export interface UniversalShippingMethod {
+    id?: string;
+    originalId?: string;
+    title: string;
+    cost?: number;
+    enabled: boolean;
+    methodTitle?: string; // e.g. "Flat Rate"
+    originalData?: any;
+}
+
+export interface UniversalTaxRate {
+    id?: string;
+    originalId?: string;
+    name: string;
+    rate: number; // Percentage (e.g. 20.0 for 20%)
+    country?: string;
+    state?: string;
+    city?: string; // Optional
+    postcode?: string; // Optional, can be wildcard
+    priority?: number;
+    compound?: boolean;
+    shipping?: boolean;
+    originalData?: any;
+    mappedFields?: Record<string, any>;
+}
+
+export interface UniversalCoupon {
+    id?: string;
+    originalId?: string;
+    code: string;
+    amount: number;
+    discountType: 'percent' | 'fixed_cart' | 'fixed_product'; // Simplified types
+    description?: string;
+    dateExpires?: Date;
+    usageCount?: number;
+    individualUse?: boolean;
+    productIds?: string[];
+    excludedProductIds?: string[];
+    usageLimit?: number;
+    usageLimitPerUser?: number;
+    freeShipping?: boolean;
+    minimumAmount?: number;
+    maximumAmount?: number;
+    emailRestrictions?: string[];
+    originalData?: any;
+    mappedFields?: Record<string, any>;
+}
+
 export interface ISourceConnector {
     name: string;
     connect(): Promise<void>;
@@ -157,7 +215,10 @@ export interface ISourceConnector {
     getPosts(onProgress?: (progress: number) => void): Promise<UniversalPost[]>;
     getPages(onProgress?: (progress: number) => void): Promise<UniversalPage[]>;
     getCategories(onProgress?: (progress: number) => void): Promise<UniversalCategory[]>;
-    getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories'): Promise<string[]>;
+    getShippingZones(onProgress?: (progress: number) => void): Promise<UniversalShippingZone[]>;
+    getTaxRates(onProgress?: (progress: number) => void): Promise<UniversalTaxRate[]>;
+    getCoupons(onProgress?: (progress: number) => void): Promise<UniversalCoupon[]>;
+    getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons'): Promise<string[]>;
 }
 
 export interface IDestinationConnector {
@@ -170,7 +231,10 @@ export interface IDestinationConnector {
     importPosts(posts: UniversalPost[]): Promise<ImportResult[]>;
     importPages(pages: UniversalPage[]): Promise<ImportResult[]>;
     importCategories(categories: UniversalCategory[]): Promise<ImportResult[]>;
-    getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories'): Promise<string[]>;
+    importShippingZones(zones: UniversalShippingZone[]): Promise<ImportResult[]>;
+    importTaxRates(rates: UniversalTaxRate[]): Promise<ImportResult[]>;
+    importCoupons(coupons: UniversalCoupon[]): Promise<ImportResult[]>;
+    getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons'): Promise<string[]>;
 }
 
 export interface ImportResult {

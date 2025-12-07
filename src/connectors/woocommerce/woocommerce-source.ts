@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder, UniversalPost, UniversalPage, UniversalCategory } from '../../core/types';
+import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder, UniversalPost, UniversalPage, UniversalCategory, UniversalShippingZone, UniversalTaxRate, UniversalCoupon } from '../../core/types';
 
 export class WooCommerceSource implements ISourceConnector {
     name = 'WooCommerce Source';
@@ -288,7 +288,22 @@ export class WooCommerceSource implements ISourceConnector {
         }));
     }
 
-    async getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories'): Promise<string[]> {
+    async getShippingZones(onProgress?: (progress: number) => void): Promise<UniversalShippingZone[]> {
+        if (onProgress) onProgress(100);
+        return [];
+    }
+
+    async getTaxRates(onProgress?: (progress: number) => void): Promise<UniversalTaxRate[]> {
+        if (onProgress) onProgress(100);
+        return [];
+    }
+
+    async getCoupons(onProgress?: (progress: number) => void): Promise<UniversalCoupon[]> {
+        if (onProgress) onProgress(100);
+        return [];
+    }
+
+    async getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons'): Promise<string[]> {
         if (!this.client) throw new Error('Not connected');
         
         let endpoint = '';

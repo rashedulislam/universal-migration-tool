@@ -3,7 +3,7 @@ import { db, statements } from '../database';
 export interface SyncedItem {
     id: number;
     projectId: string;
-    entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages';
+    entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons';
     originalId: string;
     data: any;
     syncedAt: Date;

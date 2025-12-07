@@ -19,6 +19,9 @@ interface Project {
     posts: { enabled: boolean; fields: Record<string, string> };
     pages: { enabled: boolean; fields: Record<string, string> };
     categories: { enabled: boolean; fields: Record<string, string> };
+    shipping_zones: { enabled: boolean; fields: Record<string, string> };
+    taxes: { enabled: boolean; fields: Record<string, string> };
+    coupons: { enabled: boolean; fields: Record<string, string> };
   };
 }
 
@@ -34,22 +37,28 @@ export function SettingsPage() {
     orders: { source: string[], destination: string[] },
     posts: { source: string[], destination: string[] },
     pages: { source: string[], destination: string[] },
-    categories: { source: string[], destination: string[] }
+    categories: { source: string[], destination: string[] },
+    shipping_zones: { source: string[], destination: string[] },
+    taxes: { source: string[], destination: string[] },
+    coupons: { source: string[], destination: string[] }
   }>({
     products: { source: [], destination: [] },
     customers: { source: [], destination: [] },
     orders: { source: [], destination: [] },
     posts: { source: [], destination: [] },
     pages: { source: [], destination: [] },
-    categories: { source: [], destination: [] }
+    categories: { source: [], destination: [] },
+    shipping_zones: { source: [], destination: [] },
+    taxes: { source: [], destination: [] },
+    coupons: { source: [], destination: [] }
   });
 
   const [isFetchingSchema, setIsFetchingSchema] = useState(false);
   
   // Tab State
-  const [activeTab, setActiveTab] = useState<'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons'>('products');
 
-  const updateMapping = (entity: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories', destField: string, srcField: string) => {
+  const updateMapping = (entity: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons', destField: string, srcField: string) => {
     if (!project) return;
     const currentMapping = project.mapping || {
       products: { enabled: true, fields: {} },
@@ -57,7 +66,10 @@ export function SettingsPage() {
       orders: { enabled: true, fields: {} },
       posts: { enabled: true, fields: {} },
       pages: { enabled: true, fields: {} },
-      categories: { enabled: true, fields: {} }
+      categories: { enabled: true, fields: {} },
+      shipping_zones: { enabled: true, fields: {} },
+      taxes: { enabled: true, fields: {} },
+      coupons: { enabled: true, fields: {} }
     };
     
     setProject({ 
@@ -123,11 +135,14 @@ export function SettingsPage() {
           orders: { enabled: true, fields: {} },
           posts: { enabled: true, fields: {} },
           pages: { enabled: true, fields: {} },
-          categories: { enabled: true, fields: {} }
+          categories: { enabled: true, fields: {} },
+          shipping_zones: { enabled: true, fields: {} },
+          taxes: { enabled: true, fields: {} },
+          coupons: { enabled: true, fields: {} }
         };
       }
 
-      (['products', 'customers', 'orders', 'posts', 'pages', 'categories'] as const).forEach(entity => {
+      (['products', 'customers', 'orders', 'posts', 'pages', 'categories', 'shipping_zones', 'taxes', 'coupons'] as const).forEach(entity => {
         const destFields = newSchema[entity]?.destination || [];
         // Initialize entity mapping if missing
         if (!newProject.mapping![entity]) {
@@ -313,8 +328,8 @@ export function SettingsPage() {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-2 mb-6 border-b border-gray-700">
-            {['products', 'customers', 'orders', 'posts', 'pages', 'categories'].map((entity) => (
+          <div className="flex gap-2 mb-6 border-b border-gray-700 overflow-x-auto">
+            {['products', 'customers', 'orders', 'posts', 'pages', 'categories', 'shipping_zones', 'taxes', 'coupons'].map((entity) => (
               <button
                 key={entity}
                 type="button"
@@ -343,7 +358,11 @@ export function SettingsPage() {
                       customers: { enabled: true, fields: {} },
                       orders: { enabled: true, fields: {} },
                       posts: { enabled: true, fields: {} },
-                      pages: { enabled: true, fields: {} }
+                      pages: { enabled: true, fields: {} },
+                      categories: { enabled: true, fields: {} },
+                      shipping_zones: { enabled: true, fields: {} },
+                      taxes: { enabled: true, fields: {} },
+                      coupons: { enabled: true, fields: {} }
                     };
                     
                     setProject({ 
