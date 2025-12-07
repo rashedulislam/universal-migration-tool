@@ -12,7 +12,7 @@ export class ShopifySource implements ISourceConnector {
         
         this.client = createAdminApiClient({
             storeDomain: this.storeUrl,
-            apiVersion: '2023-10',
+            apiVersion: '2025-01',
             accessToken: this.accessToken
         });
     }
@@ -29,7 +29,8 @@ export class ShopifySource implements ISourceConnector {
             `);
             
             if (response.errors) {
-                throw new Error((response.errors as any[]).map((e: any) => e.message).join(', '));
+                const errors = Array.isArray(response.errors) ? response.errors : [response.errors];
+                throw new Error(errors.map((e: any) => e.message || JSON.stringify(e)).join(', '));
             }
             console.log('Connected to Shopify Source:', response.data?.shop?.name);
         } catch (error) {
@@ -111,10 +112,20 @@ export class ShopifySource implements ISourceConnector {
                 }
             `;
 
-            const response: any = await this.client.request(query, { variables: { cursor: endCursor } });
-            
-            if (response.errors) {
-                throw new Error(response.errors.map((e: any) => e.message).join(', '));
+            let response: any;
+            try {
+                response = await this.client.request(query, { variables: { cursor: endCursor } });
+            } catch (error: any) {
+                if (error.graphQLErrors) {
+                    const messages = error.graphQLErrors.map((e: any) => e.message).join(', ');
+                    throw new Error(`GraphQL Error: ${messages}`);
+                }
+                throw error;
+            }
+
+            if (response?.errors) {
+                const errors = Array.isArray(response.errors) ? response.errors : [response.errors];
+                throw new Error(errors.map((e: any) => e.message || JSON.stringify(e)).join(', '));
             }
 
             const data = response.data?.products;
@@ -246,10 +257,20 @@ export class ShopifySource implements ISourceConnector {
                 }
             `;
 
-            const response: any = await this.client.request(query, { variables: { cursor: endCursor } });
-            
-            if (response.errors) {
-                throw new Error(response.errors.map((e: any) => e.message).join(', '));
+            let response: any;
+            try {
+                response = await this.client.request(query, { variables: { cursor: endCursor } });
+            } catch (error: any) {
+                if (error.graphQLErrors) {
+                    const messages = error.graphQLErrors.map((e: any) => e.message).join(', ');
+                    throw new Error(`GraphQL Error: ${messages}`);
+                }
+                throw error;
+            }
+
+            if (response?.errors) {
+                const errors = Array.isArray(response.errors) ? response.errors : [response.errors];
+                throw new Error(errors.map((e: any) => e.message || JSON.stringify(e)).join(', '));
             }
 
             const data = response.data?.customers;
@@ -375,10 +396,20 @@ export class ShopifySource implements ISourceConnector {
                 }
             `;
 
-            const response: any = await this.client.request(query, { variables: { cursor: endCursor } });
-            
-            if (response.errors) {
-                throw new Error(response.errors.map((e: any) => e.message).join(', '));
+            let response: any;
+            try {
+                response = await this.client.request(query, { variables: { cursor: endCursor } });
+            } catch (error: any) {
+                if (error.graphQLErrors) {
+                    const messages = error.graphQLErrors.map((e: any) => e.message).join(', ');
+                    throw new Error(`GraphQL Error: ${messages}`);
+                }
+                throw error;
+            }
+
+            if (response?.errors) {
+                const errors = Array.isArray(response.errors) ? response.errors : [response.errors];
+                throw new Error(errors.map((e: any) => e.message || JSON.stringify(e)).join(', '));
             }
 
             const data = response.data?.orders;
@@ -470,7 +501,7 @@ export class ShopifySource implements ISourceConnector {
                                     node {
                                         id
                                         title
-                                        bodyHtml
+                                        body
                                         handle
                                         publishedAt
                                         authorV2 {
@@ -497,12 +528,27 @@ export class ShopifySource implements ISourceConnector {
                     }
                 `;
 
-                const response: any = await this.client.request(query, { 
-                    variables: { blogId: blog.id, cursor: endCursor } 
-                });
+                let response: any;
+                try {
+                    response = await this.client.request(query, { 
+                        variables: { blogId: blog.id, cursor: endCursor } 
+                    });
+                } catch (error: any) {
+                    if (error.graphQLErrors) {
+                        const messages = error.graphQLErrors.map((e: any) => e.message).join(', ');
+                        throw new Error(`GraphQL Error: ${messages}`);
+                    }
+                    throw error;
+                }
 
-                if (response.errors) {
-                    console.error('Error fetching articles for blog', blog.id, response.errors);
+                if (response?.errors) {
+                    if (response.errors.graphQLErrors) {
+                        const messages = response.errors.graphQLErrors.map((e: any) => e.message).join(', ');
+                        console.error('Error fetching articles for blog', blog.id, messages);
+                        break; 
+                    }
+                    const errors = Array.isArray(response.errors) ? response.errors : [response.errors];
+                    console.error('Error fetching articles for blog', blog.id, errors.map((e: any) => e.message || JSON.stringify(e)).join(', '));
                     break;
                 }
 
@@ -512,7 +558,7 @@ export class ShopifySource implements ISourceConnector {
                 const mappedPosts = nodes.map((p: any) => ({
                     originalId: p.id.split('/').pop(),
                     title: p.title,
-                    content: p.bodyHtml,
+                    content: p.body,
                     slug: p.handle,
                     status: p.publishedAt ? 'publish' : 'draft',
                     authorId: p.authorV2?.email, // Use email as ID for mapping
@@ -574,7 +620,7 @@ export class ShopifySource implements ISourceConnector {
                             node {
                                 id
                                 title
-                                bodyHtml
+                                body
                                 handle
                                 createdAt
                                 updatedAt
@@ -594,10 +640,24 @@ export class ShopifySource implements ISourceConnector {
                 }
             `;
 
-            const response: any = await this.client.request(query, { variables: { cursor: endCursor } });
-            
-            if (response.errors) {
-                throw new Error(response.errors.map((e: any) => e.message).join(', '));
+            let response: any;
+            try {
+                response = await this.client.request(query, { variables: { cursor: endCursor } });
+            } catch (error: any) {
+                if (error.graphQLErrors) {
+                    const messages = error.graphQLErrors.map((e: any) => e.message).join(', ');
+                    throw new Error(`GraphQL Error: ${messages}`);
+                }
+                throw error;
+            }
+
+            if (response?.errors) {
+                if (response.errors.graphQLErrors) {
+                    const messages = response.errors.graphQLErrors.map((e: any) => e.message).join(', ');
+                    throw new Error(`GraphQL Error: ${messages}`);
+                }
+                const errors = Array.isArray(response.errors) ? response.errors : [response.errors];
+                throw new Error(errors.map((e: any) => e.message || JSON.stringify(e)).join(', '));
             }
 
             const data = response.data?.pages;
@@ -615,7 +675,7 @@ export class ShopifySource implements ISourceConnector {
         return allPages.map((p: any) => ({
             originalId: p.id.split('/').pop(),
             title: p.title,
-            content: p.bodyHtml,
+            content: p.body,
             slug: p.handle,
             status: p.publishedAt ? 'publish' : 'draft',
             createdAt: new Date(p.createdAt),
@@ -669,10 +729,20 @@ export class ShopifySource implements ISourceConnector {
                 }
             `;
 
-            const response: any = await this.client.request(query, { variables: { cursor: endCursor } });
-            
-            if (response.errors) {
-                 throw new Error(response.errors.map((e: any) => e.message).join(', '));
+            let response: any;
+            try {
+                response = await this.client.request(query, { variables: { cursor: endCursor } });
+            } catch (error: any) {
+                if (error.graphQLErrors) {
+                    const messages = error.graphQLErrors.map((e: any) => e.message).join(', ');
+                    throw new Error(`GraphQL Error: ${messages}`);
+                }
+                throw error;
+            }
+
+            if (response?.errors) {
+                 const errors = Array.isArray(response.errors) ? response.errors : [response.errors];
+                 throw new Error(errors.map((e: any) => e.message || JSON.stringify(e)).join(', '));
             }
 
             const data = response.data?.collections;
