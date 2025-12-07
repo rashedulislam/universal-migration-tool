@@ -32,7 +32,7 @@ const PORT = process.env.PORT || 3001;
 
 // Initialize database on startup
 initializeDatabase();
-migrateFromJson().catch(console.error);
+// migrateFromJson().catch(console.error);
 
 // --- Types ---
 interface ConnectorConfig {
