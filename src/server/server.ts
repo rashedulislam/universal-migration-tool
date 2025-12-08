@@ -371,27 +371,8 @@ app.post('/api/projects/:id/start', async (req, res) => {
     (async () => {
         try {
             // Initialize Connectors based on type
-            let source, destination;
-
-            // Source Factory
-            if (project.sourceType === 'shopify') {
-                source = new ShopifySource(project.config.source.url, project.config.source.auth.token);
-            } else if (project.sourceType === 'woocommerce') {
-                source = new WooCommerceSource(project.config.source.url, project.config.source.auth.key, project.config.source.auth.secret);
-            } else {
-                throw new Error(`Unsupported source type: ${project.sourceType}`);
-            }
-
-            // Destination Factory
-            if (project.destType === 'woocommerce') {
-                destination = new WooCommerceDestination(project.config.destination.url, project.config.destination.auth.key, project.config.destination.auth.secret);
-            } else if (project.destType === 'shopify') {
-                destination = new ShopifyDestination(project.config.destination.url, project.config.destination.auth.token);
-            } else {
-                throw new Error(`Unsupported destination type: ${project.destType}`);
-            }
-
-            const manager = new MigrationManager(source, destination);
+            // Connector instantiation is now handled by MigrationManager
+            const manager = new MigrationManager(projectRepository);
 
             // Log Interceptor
             const originalLog = console.log;
@@ -403,7 +384,7 @@ app.post('/api/projects/:id/start', async (req, res) => {
             };
 
             // Use project mapping settings
-            await manager.runMigration({
+            await manager.runMigration(project.id, {
                 products: project.mapping?.products?.enabled ?? true,
                 customers: project.mapping?.customers?.enabled ?? true,
                 orders: project.mapping?.orders?.enabled ?? true,
@@ -412,7 +393,8 @@ app.post('/api/projects/:id/start', async (req, res) => {
                 categories: project.mapping?.categories?.enabled ?? true,
                 shipping_zones: project.mapping?.shipping_zones?.enabled ?? true,
                 taxes: project.mapping?.taxes?.enabled ?? true,
-                coupons: project.mapping?.coupons?.enabled ?? true
+                coupons: project.mapping?.coupons?.enabled ?? true,
+                store_settings: project.mapping?.store_settings?.enabled ?? true
             });
 
             activeMigration.isRunning = false;

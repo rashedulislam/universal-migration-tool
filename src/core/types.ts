@@ -73,22 +73,7 @@ export interface UniversalAddress {
     phone?: string;
 }
 
-export interface UniversalOrder {
-    id?: string;
-    originalId?: string;
-    orderNumber?: string;
-    customer: UniversalCustomer;
-    lineItems: UniversalLineItem[];
-    totalPrice: number;
-    currency: string;
-    status: string;
-    createdAt: Date;
-    billingAddress?: UniversalAddress;
-    shippingAddress?: UniversalAddress;
-    metafields?: Record<string, any>;
-    originalData?: any;
-    mappedFields?: Record<string, any>;
-}
+// UniversalOrder removed (duplicate)
 
 export interface UniversalLineItem {
     title: string;
@@ -205,10 +190,45 @@ export interface UniversalCoupon {
     mappedFields?: Record<string, any>;
 }
 
+export interface UniversalFulfillment {
+    trackingCompany?: string;
+    trackingNumber?: string;
+    trackingUrl?: string;
+    status?: string;
+}
+
+export interface UniversalOrder {
+    id?: string;
+    originalId: string;
+    orderNumber: string;
+    customer: UniversalCustomer;
+    lineItems: UniversalLineItem[];
+    totalPrice: number;
+    currency: string;
+    status: string;
+    createdAt: Date;
+    billingAddress?: UniversalAddress;
+    shippingAddress?: UniversalAddress; // Added back
+    fulfillments?: UniversalFulfillment[];
+    metafields?: Record<string, any>; // Added back
+    mappedFields?: Record<string, any>;
+    originalData?: any;
+}
+
+export interface UniversalStoreSettings {
+    currency: string;     // e.g. 'USD'
+    timezone: string;     // e.g. 'America/New_York'
+    weightUnit: string;   // e.g. 'kg', 'lb'
+    currencyFormat?: string; // e.g. '${{amount}}'
+}
+
 export interface ISourceConnector {
     name: string;
     connect(): Promise<void>;
     disconnect(): Promise<void>;
+    getExportFields(entityType: string): Promise<string[]>;
+    
+    getStoreSettings?(): Promise<UniversalStoreSettings>;
     getProducts(onProgress?: (progress: number) => void): Promise<UniversalProduct[]>;
     getCustomers(onProgress?: (progress: number) => void): Promise<UniversalCustomer[]>;
     getOrders(onProgress?: (progress: number) => void): Promise<UniversalOrder[]>;
@@ -218,13 +238,15 @@ export interface ISourceConnector {
     getShippingZones(onProgress?: (progress: number) => void): Promise<UniversalShippingZone[]>;
     getTaxRates(onProgress?: (progress: number) => void): Promise<UniversalTaxRate[]>;
     getCoupons(onProgress?: (progress: number) => void): Promise<UniversalCoupon[]>;
-    getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons'): Promise<string[]>;
 }
 
 export interface IDestinationConnector {
     name: string;
     connect(): Promise<void>;
     disconnect(): Promise<void>;
+    getImportFields(entityType: string): Promise<string[]>;
+
+    importStoreSettings?(settings: UniversalStoreSettings): Promise<ImportResult>;
     importProducts(products: UniversalProduct[]): Promise<ImportResult[]>;
     importCustomers(customers: UniversalCustomer[]): Promise<ImportResult[]>;
     importOrders(orders: UniversalOrder[]): Promise<ImportResult[]>;
@@ -234,11 +256,10 @@ export interface IDestinationConnector {
     importShippingZones(zones: UniversalShippingZone[]): Promise<ImportResult[]>;
     importTaxRates(rates: UniversalTaxRate[]): Promise<ImportResult[]>;
     importCoupons(coupons: UniversalCoupon[]): Promise<ImportResult[]>;
-    getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons'): Promise<string[]>;
 }
 
 export interface ImportResult {
-    originalId?: string;
+    originalId: string;
     newId?: string;
     success: boolean;
     error?: string;

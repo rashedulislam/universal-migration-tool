@@ -22,6 +22,7 @@ interface Project {
     shipping_zones: { enabled: boolean; fields: Record<string, string> };
     taxes: { enabled: boolean; fields: Record<string, string> };
     coupons: { enabled: boolean; fields: Record<string, string> };
+    store_settings: { enabled: boolean; fields: Record<string, string> }; // Added for S2W parity
   };
 }
 
@@ -40,7 +41,8 @@ export function SettingsPage() {
     categories: { source: string[], destination: string[] },
     shipping_zones: { source: string[], destination: string[] },
     taxes: { source: string[], destination: string[] },
-    coupons: { source: string[], destination: string[] }
+    coupons: { source: string[], destination: string[] },
+    store_settings: { source: string[], destination: string[] }
   }>({
     products: { source: [], destination: [] },
     customers: { source: [], destination: [] },
@@ -50,15 +52,16 @@ export function SettingsPage() {
     categories: { source: [], destination: [] },
     shipping_zones: { source: [], destination: [] },
     taxes: { source: [], destination: [] },
-    coupons: { source: [], destination: [] }
+    coupons: { source: [], destination: [] },
+    store_settings: { source: [], destination: [] }
   });
 
   const [isFetchingSchema, setIsFetchingSchema] = useState(false);
   
   // Tab State
-  const [activeTab, setActiveTab] = useState<'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons' | 'store_settings'>('products');
 
-  const updateMapping = (entity: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons', destField: string, srcField: string) => {
+  const updateMapping = (entity: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons' | 'store_settings', destField: string, srcField: string) => {
     if (!project) return;
     const currentMapping = project.mapping || {
       products: { enabled: true, fields: {} },
@@ -69,7 +72,8 @@ export function SettingsPage() {
       categories: { enabled: true, fields: {} },
       shipping_zones: { enabled: true, fields: {} },
       taxes: { enabled: true, fields: {} },
-      coupons: { enabled: true, fields: {} }
+      coupons: { enabled: true, fields: {} },
+      store_settings: { enabled: true, fields: {} }
     };
     
     setProject({ 
@@ -138,11 +142,12 @@ export function SettingsPage() {
           categories: { enabled: true, fields: {} },
           shipping_zones: { enabled: true, fields: {} },
           taxes: { enabled: true, fields: {} },
-          coupons: { enabled: true, fields: {} }
+          coupons: { enabled: true, fields: {} },
+          store_settings: { enabled: true, fields: {} }
         };
       }
 
-      (['products', 'customers', 'orders', 'posts', 'pages', 'categories', 'shipping_zones', 'taxes', 'coupons'] as const).forEach(entity => {
+      (['products', 'customers', 'orders', 'posts', 'pages', 'categories', 'shipping_zones', 'taxes', 'coupons', 'store_settings'] as const).forEach(entity => {
         const destFields = newSchema[entity]?.destination || [];
         // Initialize entity mapping if missing
         if (!newProject.mapping![entity]) {
@@ -153,8 +158,37 @@ export function SettingsPage() {
         
         destFields.forEach((field: string) => {
           // Only add if not already present (preserve existing mappings)
-          if (currentFields[field] === undefined) {
-            currentFields[field] = ''; 
+          if (currentFields[field] === undefined || currentFields[field] === '') {
+             // Smart Auto-Mapping Logic
+             const sourceFields = newSchema[entity]?.source || [];
+             let mapped = '';
+             
+             // 1. Direct match (case-insensitive)
+             const directMatch = sourceFields.find((sf: string) => sf.toLowerCase() === field.toLowerCase());
+             if (directMatch) {
+                mapped = directMatch;
+             } else {
+                 // 2. Synonyms
+                 const synonyms: Record<string, string[]> = {
+                     'postcode': ['zip', 'zipcode', 'postal_code'],
+                     'zip': ['postcode', 'postal_code'],
+                     'state': ['province', 'region'],
+                     'province': ['state', 'region'],
+                     'rate': ['tax_rate', 'percentage'],
+                     'shipping': ['shipping_tax', 'is_shipping']
+                 };
+                 
+                 const possibleMatches = synonyms[field.toLowerCase()] || [];
+                 const synonymMatch = sourceFields.find((sf: string) => possibleMatches.includes(sf.toLowerCase()));
+                 if (synonymMatch) {
+                     mapped = synonymMatch;
+                 }
+             }
+
+             // Only set if not already set (or if we want to overwrite empty ones, which we do here for undefined)
+             if (currentFields[field] === undefined || currentFields[field] === '') {
+                 currentFields[field] = mapped;
+             }
           }
         });
         
@@ -329,7 +363,7 @@ export function SettingsPage() {
 
           {/* Tabs */}
           <div className="flex gap-2 mb-6 border-b border-gray-700 overflow-x-auto">
-            {['products', 'customers', 'orders', 'posts', 'pages', 'categories', 'shipping_zones', 'taxes', 'coupons'].map((entity) => (
+            {['products', 'customers', 'orders', 'posts', 'pages', 'categories', 'shipping_zones', 'taxes', 'coupons', 'store_settings'].map((entity) => (
               <button
                 key={entity}
                 type="button"
@@ -362,7 +396,8 @@ export function SettingsPage() {
                       categories: { enabled: true, fields: {} },
                       shipping_zones: { enabled: true, fields: {} },
                       taxes: { enabled: true, fields: {} },
-                      coupons: { enabled: true, fields: {} }
+                      coupons: { enabled: true, fields: {} },
+                      store_settings: { enabled: true, fields: {} }
                     };
                     
                     setProject({ 

@@ -69,13 +69,13 @@ export class ShopifyDestination implements IDestinationConnector {
 
                 const response = await this.client.post('/products.json', shopifyProduct);
                 results.push({
-                    originalId: product.originalId,
+                    originalId: product.originalId ?? '',
                     newId: response.data.product.id.toString(),
                     success: true
                 });
             } catch (error: any) {
                 results.push({
-                    originalId: product.originalId,
+                    originalId: product.originalId ?? '',
                     success: false,
                     error: error.message
                 });
@@ -118,13 +118,13 @@ export class ShopifyDestination implements IDestinationConnector {
 
                 const response = await this.client.post('/customers.json', shopifyCustomer);
                 results.push({
-                    originalId: customer.originalId,
+                    originalId: customer.originalId ?? '',
                     newId: response.data.customer.id.toString(),
                     success: true
                 });
             } catch (error: any) {
                 results.push({
-                    originalId: customer.originalId,
+                    originalId: customer.originalId ?? '',
                     success: false,
                     error: error.message
                 });
@@ -181,13 +181,13 @@ export class ShopifyDestination implements IDestinationConnector {
 
                 const response = await this.client.post('/orders.json', shopifyOrder);
                 results.push({
-                    originalId: order.originalId,
+                    originalId: order.originalId ?? '',
                     newId: response.data.order.id.toString(),
                     success: true
                 });
             } catch (error: any) {
                 results.push({
-                    originalId: order.originalId,
+                    originalId: order.originalId ?? '',
                     success: false,
                     error: error.message
                 });
@@ -230,9 +230,9 @@ export class ShopifyDestination implements IDestinationConnector {
                 }
 
                 const res = await this.client.post(`/blogs/${blogId}/articles.json`, { article: articleData });
-                results.push({ success: true, originalId: post.originalId, newId: res.data.article.id.toString() });
+                results.push({ success: true, originalId: post.originalId ?? '', newId: res.data.article.id.toString() });
             } catch (error: any) {
-                results.push({ success: false, originalId: post.originalId, error: error.message });
+                results.push({ success: false, originalId: post.originalId ?? '', error: error.message });
             }
         }
         return results;
@@ -253,9 +253,9 @@ export class ShopifyDestination implements IDestinationConnector {
                 };
 
                 const res = await this.client.post('/pages.json', { page: pageData });
-                results.push({ success: true, originalId: page.originalId, newId: res.data.page.id.toString() });
+                results.push({ success: true, originalId: page.originalId ?? '', newId: res.data.page.id.toString() });
             } catch (error: any) {
-                results.push({ success: false, originalId: page.originalId, error: error.message });
+                results.push({ success: false, originalId: page.originalId ?? '', error: error.message });
             }
         }
         return results;
@@ -265,22 +265,22 @@ export class ShopifyDestination implements IDestinationConnector {
         // Shopify destination categories import not strictly required for this task (Shopify -> WC)
         // But implementing for interface compliance.
         return categories.map(c => ({
-            originalId: c.originalId,
+            originalId: c.originalId ?? '',
             success: false,
-            message: 'Importing Categories to Shopify is not yet implemented.'
+            error: 'Importing Categories to Shopify is not yet implemented.'
         }));
     }
 
     async importShippingZones(zones: UniversalShippingZone[]): Promise<ImportResult[]> {
-        return zones.map(z => ({ originalId: z.originalId, success: false, error: 'Not implemented for Shopify' }));
+        return zones.map(z => ({ originalId: z.originalId ?? '', success: false, error: 'Not implemented for Shopify' }));
     }
 
     async importTaxRates(rates: UniversalTaxRate[]): Promise<ImportResult[]> {
-        return rates.map(r => ({ originalId: r.originalId, success: false, error: 'Not implemented for Shopify' }));
+        return rates.map(r => ({ originalId: r.originalId ?? '', success: false, error: 'Not implemented for Shopify' }));
     }
 
     async importCoupons(coupons: UniversalCoupon[]): Promise<ImportResult[]> {
-         return coupons.map(c => ({ originalId: c.originalId, success: false, error: 'Not implemented for Shopify' }));
+         return coupons.map(c => ({ originalId: c.originalId ?? '', success: false, error: 'Not implemented for Shopify' }));
     }
 
     async getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons'): Promise<string[]> {

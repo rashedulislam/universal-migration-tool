@@ -1,9 +1,10 @@
 import axios, { AxiosInstance } from 'axios';
-import { IDestinationConnector, UniversalProduct, UniversalCustomer, UniversalOrder, ImportResult, UniversalPost, UniversalPage, UniversalCategory, UniversalShippingZone, UniversalTaxRate, UniversalCoupon } from '../../core/types';
+import { IDestinationConnector, UniversalProduct, UniversalCustomer, UniversalOrder, ImportResult, UniversalPost, UniversalPage, UniversalCategory, UniversalShippingZone, UniversalTaxRate, UniversalCoupon, UniversalStoreSettings } from '../../core/types';
 
 export class WooCommerceDestination implements IDestinationConnector {
     name = 'WooCommerce Destination';
     private client: AxiosInstance | null = null;
+    private wpClient: AxiosInstance | null = null;
 
     constructor(private url: string, private consumerKey: string, private consumerSecret: string) {
     }
@@ -21,6 +22,25 @@ export class WooCommerceDestination implements IDestinationConnector {
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }
         });
+        
+        // Initialize WP Client (for Posts, Pages)
+        this.wpClient = axios.create({
+            baseURL: `https://${cleanUrl}/wp-json/wp/v2`,
+            params: {
+                // WP API typically uses Basic Auth or specific plugins for writing. 
+                // Re-using WC keys usually works if user has permissions, 
+                // but strictly WP API uses Application Passwords or Cookie/Nonce.
+                // For this tool, we assume Basic Auth via WC keys often bridges or same user context.
+                // If not, we might need separate auth. 
+                // Many setups with consumer_key/secret query params also authenticate for WP endpoints if plugins enable it.
+                consumer_key: this.consumerKey,
+                consumer_secret: this.consumerSecret
+            },
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        });
+
         try {
             await this.client.get('/system_status');
             console.log('Connected to WooCommerce Destination.');
@@ -32,6 +52,7 @@ export class WooCommerceDestination implements IDestinationConnector {
 
     async disconnect(): Promise<void> {
         this.client = null;
+        this.wpClient = null;
     }
 
     async importProducts(products: UniversalProduct[]): Promise<ImportResult[]> {
@@ -58,13 +79,13 @@ export class WooCommerceDestination implements IDestinationConnector {
 
                 const response = await this.client.post('/products', wcProduct);
                 results.push({
-                    originalId: product.originalId,
+                    originalId: product.originalId || '',
                     newId: response.data.id.toString(),
                     success: true
                 });
             } catch (error: any) {
                 results.push({
-                    originalId: product.originalId,
+                    originalId: product.originalId || '',
                     success: false,
                     error: error.message
                 });
@@ -110,13 +131,13 @@ export class WooCommerceDestination implements IDestinationConnector {
 
                 const response = await this.client.post('/customers', wcCustomer);
                 results.push({
-                    originalId: customer.originalId,
+                    originalId: customer.originalId ?? '',
                     newId: response.data.id.toString(),
                     success: true
                 });
             } catch (error: any) {
                 results.push({
-                    originalId: customer.originalId,
+                    originalId: customer.originalId ?? '',
                     success: false,
                     error: error.message
                 });
@@ -160,13 +181,13 @@ export class WooCommerceDestination implements IDestinationConnector {
 
                 const response = await this.client.post('/orders', wcOrder);
                 results.push({
-                    originalId: order.originalId,
+                    originalId: order.originalId || '',
                     newId: response.data.id.toString(),
                     success: true
                 });
             } catch (error: any) {
                 results.push({
-                    originalId: order.originalId,
+                    originalId: order.originalId || '',
                     success: false,
                     error: error.message
                 });
@@ -175,7 +196,12 @@ export class WooCommerceDestination implements IDestinationConnector {
         return results;
     }
     async importPosts(posts: UniversalPost[]): Promise<ImportResult[]> {
-        if (!this.client) throw new Error('Not connected');
+        if (!this.wpClient) throw new Error('Not connected');
+
+        // 1. Find or create a Blog to attach articles to (Not relevant for standard WP posts, they are just posts)
+        // But for "Blog" checking in WP, usually handled by categories.
+        // We will skip the "Blog ID" Check logic which seemed to be looking for logic similar to Shopify Blogs.
+        // WordPress posts don't need a parent 'blog' id like Shopify.
 
         const results: ImportResult[] = [];
         for (const post of posts) {
@@ -184,24 +210,24 @@ export class WooCommerceDestination implements IDestinationConnector {
                     title: post.title,
                     content: post.content,
                     slug: post.slug,
-                    status: post.status,
+                    status: post.status === 'publish' ? 'publish' : 'draft', // Map standard statuses
                     // author: post.authorId, // Need to map author ID or use default
-                    categories: post.categories, // Need to map category IDs
-                    tags: post.tags, // Need to map tag IDs
-                    date: post.createdAt.toISOString()
+                    categories: post.categories?.map(c => parseInt(c)).filter(c => !isNaN(c)) || [], // Map category IDs
+                    tags: post.tags?.map(t => parseInt(t)).filter(t => !isNaN(t)) || [], // Map tag IDs (if passed as IDs)
+                    date: post.createdAt ? new Date(post.createdAt).toISOString() : undefined
                 };
 
-                const res = await this.client.post('/wp/v2/posts', postData);
-                results.push({ success: true, originalId: post.originalId, newId: res.data.id.toString() });
+                const res = await this.wpClient.post('/posts', postData);
+                results.push({ success: true, originalId: post.originalId || '', newId: res.data.id.toString() });
             } catch (error: any) {
-                results.push({ success: false, originalId: post.originalId, error: error.message });
+                results.push({ success: false, originalId: post.originalId || '', error: error.message });
             }
         }
         return results;
     }
 
     async importPages(pages: UniversalPage[]): Promise<ImportResult[]> {
-        if (!this.client) throw new Error('Not connected');
+        if (!this.wpClient) throw new Error('Not connected');
 
         const results: ImportResult[] = [];
         for (const page of pages) {
@@ -210,15 +236,15 @@ export class WooCommerceDestination implements IDestinationConnector {
                     title: page.title,
                     content: page.content,
                     slug: page.slug,
-                    status: page.status,
+                    status: page.status === 'publish' ? 'publish' : 'draft',
                     // author: page.authorId,
-                    date: page.createdAt.toISOString()
+                    date: page.createdAt ? new Date(page.createdAt).toISOString() : undefined
                 };
 
-                const res = await this.client.post('/wp/v2/pages', pageData);
-                results.push({ success: true, originalId: page.originalId, newId: res.data.id.toString() });
+                const res = await this.wpClient.post('/pages', pageData);
+                results.push({ success: true, originalId: page.originalId || '', newId: res.data.id.toString() });
             } catch (error: any) {
-                results.push({ success: false, originalId: page.originalId, error: error.message });
+                results.push({ success: false, originalId: page.originalId || '', error: error.message });
             }
         }
         return results;
@@ -232,22 +258,22 @@ export class WooCommerceDestination implements IDestinationConnector {
             try {
                 const wcCategory = {
                     name: cat.name,
-                    slug: cat.slug,
-                    description: cat.description,
+                    slug: cat.slug || '',
+                    description: cat.description || '',
                     image: cat.image ? { src: cat.image } : undefined,
                     ...cat.mappedFields
                 };
 
                 const response = await this.client.post('/products/categories', wcCategory);
                 results.push({
-                    originalId: cat.originalId,
+                    originalId: cat.originalId ?? '',
                     newId: response.data.id.toString(),
                     success: true
                 });
             } catch (error: any) {
                 // If slug exists, try to find and update or skip
                 results.push({
-                    originalId: cat.originalId,
+                    originalId: cat.originalId ?? '',
                     success: false,
                     error: error.message
                 });
@@ -286,13 +312,13 @@ export class WooCommerceDestination implements IDestinationConnector {
                 }
 
                 results.push({
-                    originalId: zone.originalId,
+                    originalId: zone.originalId || '',
                     newId: newZoneId.toString(),
                     success: true
                 });
             } catch (error: any) {
                 results.push({
-                    originalId: zone.originalId,
+                    originalId: zone.originalId || '',
                     success: false,
                     error: error.message
                 });
@@ -322,13 +348,13 @@ export class WooCommerceDestination implements IDestinationConnector {
 
                 const response = await this.client.post('/taxes', wcTax);
                 results.push({
-                    originalId: rate.originalId,
+                    originalId: rate.originalId || '',
                     newId: response.data.id.toString(),
                     success: true
                 });
             } catch (error: any) {
                 results.push({
-                    originalId: rate.originalId,
+                    originalId: rate.originalId || '',
                     success: false,
                     error: error.message
                 });
@@ -343,11 +369,11 @@ export class WooCommerceDestination implements IDestinationConnector {
 
         for (const coupon of coupons) {
             try {
-                const wcCoupon = {
+                const wcCoupon: any = {
                     code: coupon.code,
                     amount: coupon.amount.toString(),
                     discount_type: coupon.discountType,
-                    description: coupon.description,
+                    description: coupon.description || '',
                     date_expires: coupon.dateExpires ? coupon.dateExpires.toISOString() : null,
                     usage_limit: coupon.usageLimit,
                     usage_limit_per_user: coupon.usageLimitPerUser,
@@ -361,13 +387,13 @@ export class WooCommerceDestination implements IDestinationConnector {
 
                 const response = await this.client.post('/coupons', wcCoupon);
                 results.push({
-                    originalId: coupon.originalId,
+                    originalId: coupon.originalId || '',
                     newId: response.data.id.toString(),
                     success: true
                 });
             } catch (error: any) {
                  results.push({
-                    originalId: coupon.originalId,
+                    originalId: coupon.originalId || '',
                     success: false,
                     error: error.message
                 });
@@ -376,7 +402,51 @@ export class WooCommerceDestination implements IDestinationConnector {
         return results;
     }
 
-    async getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons'): Promise<string[]> {
+    async importStoreSettings(settings: UniversalStoreSettings): Promise<ImportResult> {
+        if (!this.client || !this.wpClient) throw new Error('Not connected');
+
+        try {
+            // 1. WooCommerce Settings (Currency, Weight Unit)
+            // Currency
+            if (settings.currency) {
+                try {
+                    await this.client.put('/settings/general/woocommerce_currency', { value: settings.currency });
+                } catch (e) { console.warn('Failed to set WC currency', e); }
+            }
+            // Weight Unit
+            if (settings.weightUnit) {
+                try {
+                   await this.client.put('/settings/products/woocommerce_weight_unit', { value: settings.weightUnit });
+                } catch (e) { console.warn('Failed to set WC weight unit', e); }
+            }
+
+            // 2. WordPress Settings (Timezone, Date Format) -> Requires wpClient
+            // The /wp/v2/settings endpoint allows updating core settings.
+            const wpSettings: any = {};
+            if (settings.timezone) {
+                // WordPress uses 'timezone_string' or 'gmt_offset'
+                wpSettings.timezone_string = settings.timezone;
+            }
+            // Add other WP mappings if needed (e.g. date_format, time_format)
+
+            if (Object.keys(wpSettings).length > 0) {
+                try {
+                    await this.wpClient.post('/settings', wpSettings);
+                } catch (e: any) {
+                    console.warn('Failed to set WP settings', e.response?.data || e.message);
+                    // Don't fail the whole migration for this, just warn
+                }
+            }
+
+            console.log('Store settings updated in WooCommerce/WordPress.');
+            return { originalId: 'store_settings', success: true };
+        } catch (error: any) {
+            console.error('Failed to import store settings:', error.response?.data || error.message);
+            return { originalId: 'store_settings', success: false, error: error.message };
+        }
+    }
+
+    async getImportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons' | 'store_settings'): Promise<string[]> {
         if (!this.client) throw new Error('Not connected');
 
         const standardFields: string[] = [];
@@ -425,6 +495,7 @@ export class WooCommerceDestination implements IDestinationConnector {
                 );
                 endpoint = '/wp/v2/pages?per_page=1';
                 break;
+            case 'categories':
                 standardFields.push('name', 'slug', 'parent', 'description', 'display', 'image', 'menu_order', 'count');
                 endpoint = '/products/categories?per_page=1';
                 break;
@@ -440,11 +511,30 @@ export class WooCommerceDestination implements IDestinationConnector {
                 standardFields.push('code', 'amount', 'discount_type', 'description', 'date_expires', 'usage_limit', 'individual_use', 'product_ids', 'exclude_product_ids', 'usage_limit_per_user', 'limit_usage_to_x_items', 'free_shipping', 'product_categories', 'excluded_product_categories', 'exclude_sale_items', 'minimum_amount', 'maximum_amount', 'email_restrictions');
                 endpoint = '/coupons?per_page=1';
                 break;
+            case 'store_settings':
+                standardFields.push('currency', 'weightUnit', 'timezone');
+                // Store settings don't have a single endpoint for list, so we might skip dynamic fetch or point to general settings
+                endpoint = '/settings/general/woocommerce_currency' // Dummy endpoint to satisfy variable, or handle gracefully
+                break;
         }
 
         try {
+            // Select correct client
+            const apiClient = (entityType === 'posts' || entityType === 'pages') ? this.wpClient : this.client;
+            if (!apiClient) return standardFields;
+
             // Try to fetch one item to get dynamic fields (like custom meta if exposed, or just to verify keys)
-            const response = await this.client.get(endpoint);
+            // Note: endpoint must be relative to base URL of selected client
+            // For posts/pages (wpClient), endpoint should be without /wp/v2 prefix relative to base, likely just /posts or /pages if base already has it.
+            // But strict implementation in switch statement set endpoint.
+            // Let's adjust endpoint logic inside getImportFields or here.
+            
+            // Adjust endpoint for WP client
+            let effectiveEndpoint = endpoint;
+            if (entityType === 'posts') effectiveEndpoint = '/posts?per_page=1';
+            if (entityType === 'pages') effectiveEndpoint = '/pages?per_page=1';
+
+            const response = await apiClient.get(effectiveEndpoint);
             const items = response.data;
             if (items && items.length > 0) {
                 const dynamicFields = Object.keys(items[0]);

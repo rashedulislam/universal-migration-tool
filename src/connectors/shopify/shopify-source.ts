@@ -1,5 +1,5 @@
 import { createAdminApiClient, AdminApiClient } from '@shopify/admin-api-client';
-import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder, UniversalPost, UniversalPage, UniversalCategory, UniversalShippingZone, UniversalTaxRate, UniversalCoupon } from '../../core/types';
+import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder, UniversalPost, UniversalPage, UniversalCategory, UniversalShippingZone, UniversalTaxRate, UniversalCoupon, UniversalStoreSettings } from '../../core/types';
 
 export class ShopifySource implements ISourceConnector {
     name = 'Shopify Source';
@@ -316,6 +316,31 @@ export class ShopifySource implements ISourceConnector {
         }));
     }
 
+    async getStoreSettings(): Promise<UniversalStoreSettings> {
+        if (!this.client) throw new Error('Not connected');
+        const query = `
+            query {
+                shop {
+                    currencyCode
+                    timezoneAbbreviation
+                    ianaTimezone
+                    weightUnit
+                    currencyFormats {
+                        moneyFormat
+                    }
+                }
+            }
+        `;
+        const response = await this.client.request(query);
+        const shop = response.data?.shop;
+        return {
+            currency: shop?.currencyCode || 'USD',
+            timezone: shop?.ianaTimezone || 'UTC',
+            weightUnit: shop?.weightUnit?.toLowerCase() || 'kg',
+            currencyFormat: shop?.currencyFormats?.moneyFormat
+        };
+    }
+
     async getOrders(onProgress?: (progress: number) => void): Promise<UniversalOrder[]> {
         if (!this.client) throw new Error('Not connected');
 
@@ -380,6 +405,22 @@ export class ShopifySource implements ISourceConnector {
                                     city
                                     country
                                     zip
+                                }
+                                fulfillments(first: 10) {
+                                    edges {
+                                        node {
+                                            trackingCompany
+                                            trackingInfo(first: 1) {
+                                                edges {
+                                                    node {
+                                                        number
+                                                        url
+                                                    }
+                                                }
+                                            }
+                                            status
+                                        }
+                                    }
                                 }
                                 metafields(first: 25) {
                                     edges {
@@ -451,6 +492,12 @@ export class ShopifySource implements ISourceConnector {
                 country: order.billingAddress.country,
                 zip: order.billingAddress.zip
             } : undefined,
+            fulfillments: order.fulfillments?.edges.map((f: any) => ({
+                trackingCompany: f.node.trackingCompany,
+                trackingNumber: f.node.trackingInfo?.edges[0]?.node?.number,
+                trackingUrl: f.node.trackingInfo?.edges[0]?.node?.url,
+                status: f.node.status
+            })),
             metafields: order.metafields?.edges.reduce((acc: any, edge: any) => {
                 acc[`${edge.node.namespace}.${edge.node.key}`] = edge.node.value;
                 return acc;
@@ -952,7 +999,7 @@ export class ShopifySource implements ISourceConnector {
         return coupons;
     }
 
-    async getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons'): Promise<string[]> {
+    async getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons' | 'store_settings'): Promise<string[]> {
         // Return the fields we are explicitly fetching in our GraphQL queries
         // Since we map GraphQL responses to Universal Types, we return the keys of those types primarily, 
         // plus any known metafields or raw data keys if we were using REST.
@@ -988,9 +1035,11 @@ export class ShopifySource implements ISourceConnector {
             case 'shipping_zones':
                 return ['name', 'methods', 'countries'];
             case 'taxes':
-                return ['name', 'rate', 'country', 'state'];
+                return ['name', 'rate', 'country', 'state', 'zip', 'city', 'shipping', 'priority', 'compound'];
             case 'coupons':
                 return ['code', 'amount', 'discountType', 'description', 'dateExpires', 'usageLimit'];
+            case 'store_settings':
+                return ['currency', 'timezone', 'weightUnit', 'currencyFormat'];
             default:
                 return [];
         }
