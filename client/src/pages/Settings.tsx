@@ -168,20 +168,39 @@ export function SettingsPage() {
              if (directMatch) {
                 mapped = directMatch;
              } else {
-                 // 2. Synonyms
-                 const synonyms: Record<string, string[]> = {
-                     'postcode': ['zip', 'zipcode', 'postal_code'],
-                     'zip': ['postcode', 'postal_code'],
-                     'state': ['province', 'region'],
-                     'province': ['state', 'region'],
-                     'rate': ['tax_rate', 'percentage'],
-                     'shipping': ['shipping_tax', 'is_shipping']
-                 };
+                 // 2. Fuzzy match (ignore underscores) - handles camelCase/snake_case differences
+                 const fuzzyMatch = sourceFields.find((sf: string) => 
+                    sf.toLowerCase().replace(/_/g, '') === field.toLowerCase().replace(/_/g, '')
+                 );
                  
-                 const possibleMatches = synonyms[field.toLowerCase()] || [];
-                 const synonymMatch = sourceFields.find((sf: string) => possibleMatches.includes(sf.toLowerCase()));
-                 if (synonymMatch) {
-                     mapped = synonymMatch;
+                 if (fuzzyMatch) {
+                     mapped = fuzzyMatch;
+                 } else {
+                     // 3. Synonyms
+                     const synonyms: Record<string, string[]> = {
+                         'postcode': ['zip', 'zipcode', 'postal_code'],
+                         'zip': ['postcode', 'postal_code'],
+                         'state': ['province', 'region'],
+                         'province': ['state', 'region'],
+                         'rate': ['tax_rate', 'percentage'],
+                         'shipping': ['shipping_tax', 'is_shipping'],
+                         'discount_type': ['discountType'],
+                         'date_expires': ['dateExpires'],
+                         'usage_limit': ['usageLimit'],
+                         'individual_use': ['individualUse'],
+                         'product_ids': ['productIds'],
+                         'exclude_product_ids': ['excludedProductIds'], // Map exclude to excluded
+                         'usage_limit_per_user': ['usageLimitPerUser'],
+                         'minimum_amount': ['minimumAmount'],
+                         'maximum_amount': ['maximumAmount'],
+                         'free_shipping': ['freeShipping']
+                     };
+                     
+                     const possibleMatches = synonyms[field.toLowerCase()] || [];
+                     const synonymMatch = sourceFields.find((sf: string) => possibleMatches.includes(sf.toLowerCase()) || possibleMatches.includes(sf));
+                     if (synonymMatch) {
+                         mapped = synonymMatch;
+                     }
                  }
              }
 

@@ -938,6 +938,7 @@ export class ShopifySource implements ISourceConnector {
         let allCoupons: any[] = [];
         let hasNextPage = true;
         let endCursor: string | null = null;
+        let total = 0; // Approximate
 
         while (hasNextPage) {
             const query = `
@@ -963,6 +964,19 @@ export class ShopifySource implements ISourceConnector {
                                 startsAt
                                 endsAt
                                 usageLimit
+                                oncePerCustomer
+                                prerequisiteSubtotalRange {
+                                    greaterThanOrEqualTo {
+                                        amount
+                                    }
+                                }
+                                entitledProductIds
+                                entitledVariantIds
+                                customerSelection {
+                                    ... on PriceRuleCustomerSelection {
+                                        forAllCustomers
+                                    }
+                                }
                                 discountCodes(first: 10) {
                                     edges {
                                         node {
@@ -977,26 +991,64 @@ export class ShopifySource implements ISourceConnector {
                 }
             `;
 
-            const response: any = await this.client.request(query, { variables: { cursor: endCursor } });
+            let response: any;
+            try {
+                response = await this.client.request(query, { variables: { cursor: endCursor } });
+            } catch (error: any) {
+                if (error.graphQLErrors) {
+                    const messages = error.graphQLErrors.map((e: any) => e.message).join(', ');
+                    throw new Error(messages);
+                }
+                throw error;
+            }
+            
+            if (response?.errors) {
+                const errors = Array.isArray(response.errors) ? response.errors : [response.errors];
+                throw new Error(errors.map((e: any) => e.message || JSON.stringify(e)).join(', '));
+            }
+
             const data = response.data?.priceRules;
             const nodes = data?.edges.map((edge: any) => edge.node) || [];
             
             allCoupons = [...allCoupons, ...nodes];
             
-            if (onProgress) onProgress(50);
+            if (onProgress) {
+                onProgress(50); // Indeterminate
+            }
+
             hasNextPage = data?.pageInfo?.hasNextPage || false;
             endCursor = data?.pageInfo?.endCursor || null;
         }
 
         if (onProgress) onProgress(100);
 
-        // Map PriceRules to Coupons (Flattening codes)
+        // Map PriceRules to Coupons
         const coupons: UniversalCoupon[] = [];
         allCoupons.forEach(rule => {
-            const discountType = rule.valueV2?.percentage ? 'percent' : 'fixed_cart';
-            const amount = rule.valueV2?.percentage ? rule.valueV2.percentage : parseFloat(rule.valueV2?.amount || '0');
+            const isShipping = rule.targetType === 'SHIPPING_LINE';
+            const isPercentage = !!rule.valueV2?.percentage;
             
-            // A price rule can have multiple codes, but usually one for migration mapping
+            // If it's a shipping rule with 100% off, it's free shipping
+            const freeShipping = isShipping && isPercentage && rule.valueV2.percentage === 100.0;
+            
+            let discountType: UniversalCoupon['discountType'] = 'fixed_cart';
+            if (isPercentage) {
+                discountType = 'percent';
+            } else if (rule.targetType === 'LINE_ITEM') {
+                // Shopify applies to line items, closest WC match is fixed_product or fixed_cart depending on implementation
+                // We'll default to fixed_cart for simple amount off, but logic differs.
+                discountType = 'fixed_cart'; 
+            }
+
+            const amount = isPercentage ? rule.valueV2.percentage : parseFloat(rule.valueV2?.amount || '0');
+            const minAmount = parseFloat(rule.prerequisiteSubtotalRange?.greaterThanOrEqualTo?.amount || '0');
+
+            // Product IDs (Legacy array of IDs)
+            let productIds: string[] = [];
+            if (rule.entitledProductIds) {
+                productIds = rule.entitledProductIds.map((id: string) => id.split('/').pop() || id);
+            }
+
             rule.discountCodes?.edges.forEach((codeEdge: any) => {
                 coupons.push({
                     originalId: rule.id.split('/').pop(),
@@ -1006,6 +1058,10 @@ export class ShopifySource implements ISourceConnector {
                     description: rule.title,
                     dateExpires: rule.endsAt ? new Date(rule.endsAt) : undefined,
                     usageLimit: rule.usageLimit,
+                    usageLimitPerUser: rule.oncePerCustomer ? 1 : undefined,
+                    minimumAmount: minAmount > 0 ? minAmount : undefined,
+                    freeShipping: freeShipping,
+                    productIds: productIds.length > 0 ? productIds : undefined,
                     usageCount: codeEdge.node.usageCount,
                     originalData: rule
                 });
@@ -1053,7 +1109,7 @@ export class ShopifySource implements ISourceConnector {
             case 'taxes':
                 return ['name', 'rate', 'country', 'state', 'zip', 'city', 'shipping', 'priority', 'compound'];
             case 'coupons':
-                return ['code', 'amount', 'discountType', 'description', 'dateExpires', 'usageLimit'];
+                return ['code', 'amount', 'discountType', 'description', 'dateExpires', 'usageLimit', 'usageLimitPerUser', 'minimumAmount', 'freeShipping', 'productIds'];
             case 'store_settings':
                 return ['siteTitle', 'adminEmail', 'address1', 'city', 'country', 'state', 'zip', 'currency', 'weightUnit', 'timezone', 'currencyFormat'];
             default:
