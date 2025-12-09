@@ -192,7 +192,13 @@ app.get('/api/projects/:id/schema', async (req, res) => {
 
         try {
             if (project.destType === 'woocommerce') {
-                destination = new WooCommerceDestination(project.config.destination.url, project.config.destination.auth.key, project.config.destination.auth.secret);
+                destination = new WooCommerceDestination(
+                    project.config.destination.url, 
+                    project.config.destination.auth.key, 
+                    project.config.destination.auth.secret,
+                    project.config.destination.auth.wpUser,
+                    project.config.destination.auth.wpAppPassword
+                );
             } else {
                 destination = new ShopifyDestination(project.config.destination.url, project.config.destination.auth.token);
             }
@@ -248,6 +254,10 @@ app.get('/api/projects/:id/schema', async (req, res) => {
             coupons: {
                 source: await getFieldsSafe(() => source.getExportFields('coupons'), 'source coupons'),
                 destination: await getFieldsSafe(() => destination.getImportFields('coupons'), 'destination coupons')
+            },
+            store_settings: {
+                source: await getFieldsSafe(() => source.getExportFields('store_settings'), 'source store_settings'),
+                destination: await getFieldsSafe(() => destination.getImportFields('store_settings'), 'destination store_settings')
             }
         };
 
@@ -281,7 +291,13 @@ app.get('/api/projects/:id/sync', async (req, res) => {
         if (project.sourceType === 'shopify') {
             source = new ShopifySource(project.config.source.url, project.config.source.auth.token);
         } else {
-            source = new WooCommerceSource(project.config.source.url, project.config.source.auth.key, project.config.source.auth.secret);
+            source = new WooCommerceSource(
+                project.config.source.url, 
+                project.config.source.auth.key, 
+                project.config.source.auth.secret,
+                project.config.source.auth.wpUser,
+                project.config.source.auth.wpAppPassword
+            );
         }
         await source.connect();
 
@@ -301,6 +317,14 @@ app.get('/api/projects/:id/sync', async (req, res) => {
             case 'shipping_zones': items = await source.getShippingZones(onProgress); break;
             case 'taxes': items = await source.getTaxRates(onProgress); break;
             case 'coupons': items = await source.getCoupons(onProgress); break;
+            case 'store_settings': 
+                if (source.getStoreSettings) {
+                    const settings = await source.getStoreSettings();
+                    // Inject a pseudo-ID for database storage requirements
+                    (settings as any).originalId = 'store_settings';
+                    items = [settings]; 
+                }
+                break;
             default: 
                 sendEvent({ type: 'error', message: 'Invalid entity type' });
                 res.end();

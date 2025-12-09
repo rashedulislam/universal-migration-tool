@@ -1,16 +1,24 @@
 import axios, { AxiosInstance } from 'axios';
-import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder, UniversalPost, UniversalPage, UniversalCategory, UniversalShippingZone, UniversalTaxRate, UniversalCoupon } from '../../core/types';
+import { ISourceConnector, UniversalProduct, UniversalCustomer, UniversalOrder, UniversalPost, UniversalPage, UniversalCategory, UniversalShippingZone, UniversalTaxRate, UniversalCoupon, UniversalStoreSettings } from '../../core/types';
 
 export class WooCommerceSource implements ISourceConnector {
     name = 'WooCommerce Source';
     private client: AxiosInstance | null = null;
+    private wpClient: AxiosInstance | null = null;
 
-    constructor(private url: string, private consumerKey: string, private consumerSecret: string) {
-    }
+    constructor(
+        private url: string, 
+        private consumerKey: string, 
+        private consumerSecret: string,
+        private wpUser?: string,
+        private wpAppPassword?: string
+    ) {}
 
     async connect(): Promise<void> {
         // Remove protocol if present to avoid double https:// or missing protocol
         const cleanUrl = this.url.replace(/^https?:\/\//, '');
+        
+        // WooCommerce Client
         this.client = axios.create({
             baseURL: `https://${cleanUrl}/wp-json/wc/v3`,
             params: {
@@ -18,9 +26,27 @@ export class WooCommerceSource implements ISourceConnector {
                 consumer_secret: this.consumerSecret
             },
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                'User-Agent': 'UniversalMigrationTool/1.0',
+                'Content-Type': 'application/json'
             }
         });
+        
+        // WordPress Client (for Settings, Posts, Pages)
+        const wpAuthHeaders: any = {
+            'User-Agent': 'UniversalMigrationTool/1.0',
+            'Content-Type': 'application/json'
+        };
+
+        if (this.wpUser && this.wpAppPassword) {
+            const token = Buffer.from(`${this.wpUser}:${this.wpAppPassword}`).toString('base64');
+            wpAuthHeaders['Authorization'] = `Basic ${token}`;
+        }
+
+        this.wpClient = axios.create({
+            baseURL: `https://${cleanUrl}/wp-json/wp/v2`,
+            headers: wpAuthHeaders
+        });
+
         try {
             await this.client.get('/system_status');
             console.log('Connected to WooCommerce Source.');
@@ -185,7 +211,8 @@ export class WooCommerceSource implements ISourceConnector {
 
         while (true) {
             // Use _embed to get author details
-            const response = await this.client.get('/wp/v2/posts', {
+            // Use wpClient for WP REST API
+            const response = await this.wpClient!.get('/posts', {
                 params: { page, per_page: perPage, _embed: true }
             });
 
@@ -234,7 +261,7 @@ export class WooCommerceSource implements ISourceConnector {
         let total = 0;
 
         while (true) {
-            const response = await this.client.get('/wp/v2/pages', {
+            const response = await this.wpClient!.get('/pages', {
                 params: { page, per_page: perPage, _embed: true }
             });
 
@@ -303,25 +330,87 @@ export class WooCommerceSource implements ISourceConnector {
         return [];
     }
 
-    async getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons'): Promise<string[]> {
-        if (!this.client) throw new Error('Not connected');
+    async getStoreSettings(): Promise<UniversalStoreSettings> {
+        if (!this.client || !this.wpClient) throw new Error('Not connected');
         
-        let endpoint = '';
-        switch (entityType) {
-            case 'products': endpoint = '/wc/v3/products?per_page=1'; break;
-            case 'customers': endpoint = '/wc/v3/customers?per_page=1'; break;
-            case 'orders': endpoint = '/wc/v3/orders?per_page=1'; break;
-            case 'posts': endpoint = '/wp/v2/posts?per_page=1'; break;
-            case 'pages': endpoint = '/wp/v2/pages?per_page=1'; break;
-            case 'categories': endpoint = '/products/categories?per_page=1'; break;
+        const settings: UniversalStoreSettings = {};
+
+        try {
+            // 1. WooCommerce Settings
+            const wcSettings = [
+                { key: 'woocommerce_currency', prop: 'currency' },
+                { key: 'woocommerce_weight_unit', prop: 'weightUnit' },
+                { key: 'woocommerce_store_address', prop: 'address1' },
+                { key: 'woocommerce_store_city', prop: 'city' },
+                { key: 'woocommerce_store_postcode', prop: 'zip' },
+                { key: 'woocommerce_default_country', prop: 'country' }, // Might contain state like US:CA
+                { key: 'woocommerce_currency_pos', prop: 'currencyFormat' }
+            ];
+
+            for (const { key, prop } of wcSettings) {
+                try {
+                    // Correct endpoint for general settings options is /settings/general/{id}
+                    const res = await this.client.get(`/settings/general/${key}`);
+                    (settings as any)[prop] = res.data.value;
+                } catch (e) {
+                    // console.warn(`Failed to fetch WC setting ${key}`, e);
+                }
+            }
+
+            // Handle Country/State split if needed
+            if (settings.country && settings.country.includes(':')) {
+                const parts = settings.country.split(':');
+                settings.country = parts[0];
+                settings.state = parts.length > 1 ? parts[1] : undefined;
+            } else if (settings.country) {
+                // If no colon, it's just country. State might be empty or not set in default_country.
+            }
+            // Note: weight unit is actually in /settings/products/woocommerce_weight_unit usually?
+            // Let's double check. My previous code used /settings/products for weight_unit.
+            // Let's re-fetch weight unit from correct path if previous loop failed or just correct it.
+            // Actually, woocommerce_weight_unit is in 'products' group.
+            
+            try {
+                const weightRes = await this.client.get('/settings/products/woocommerce_weight_unit');
+                settings.weightUnit = weightRes.data.value;
+            } catch (e) {}
+
+
+            // 2. WordPress Settings (Timezone, Title, Email)
+            try {
+                const wpSettingsRes = await this.wpClient.get('/settings');
+                const wpData = wpSettingsRes.data;
+                
+                if (wpData.timezone_string) settings.timezone = wpData.timezone_string;
+                if (wpData.title) settings.siteTitle = wpData.title;
+                if (wpData.email) settings.adminEmail = wpData.email;
+                
+            } catch (e: any) { console.warn('Failed to fetch WP settings.', e.response?.data || e.message); }
+
+        } catch (error) {
+            console.error('Failed to get store settings:', error);
         }
         
-        const response = await this.client.get(endpoint);
-        const items = response.data;
+        return settings;
+    }
+
+    async getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons' | 'store_settings'): Promise<string[]> {
+        if (!this.client || !this.wpClient) throw new Error('Not connected');
         
-        if (items && items.length > 0) {
-            return Object.keys(items[0]);
+        // ... (rest of switch) ...
+        switch (entityType) {
+            case 'products': return ['name', 'slug', 'type', 'status', 'description', 'short_description', 'sku', 'price', 'regular_price', 'sale_price', 'date_on_sale_from', 'date_on_sale_to', 'on_sale', 'purchasable', 'total_sales', 'virtual', 'downloadable', 'downloads', 'download_limit', 'download_expiry', 'external_url', 'button_text', 'tax_status', 'tax_class', 'manage_stock', 'stock_quantity', 'backorders', 'backorders_allowed', 'backordered', 'low_stock_amount', 'sold_individually', 'weight', 'dimensions', 'shipping_required', 'shipping_taxable', 'shipping_class', 'shipping_class_id', 'reviews_allowed', 'average_rating', 'rating_count', 'related_ids', 'upsell_ids', 'cross_sell_ids', 'parent_id', 'purchase_note', 'categories', 'tags', 'images', 'attributes', 'default_attributes', 'variations', 'grouped_products', 'menu_order', 'meta_data'];
+            case 'customers': return ['email', 'first_name', 'last_name', 'username', 'billing', 'shipping', 'is_paying_customer', 'avatar_url', 'meta_data'];
+            case 'orders': return ['parent_id', 'status', 'currency', 'version', 'prices_include_tax', 'date_created', 'date_modified', 'discount_total', 'discount_tax', 'shipping_total', 'shipping_tax', 'cart_tax', 'total', 'total_tax', 'customer_id', 'order_key', 'billing', 'shipping', 'payment_method', 'payment_method_title', 'transaction_id', 'customer_ip_address', 'customer_user_agent', 'created_via', 'customer_note', 'date_completed', 'date_paid', 'cart_hash', 'number', 'meta_data', 'line_items', 'tax_lines', 'shipping_lines', 'fee_lines', 'coupon_lines', 'refunds'];
+            case 'posts': return ['date', 'date_gmt', 'guid', 'id', 'link', 'modified', 'modified_gmt', 'slug', 'status', 'type', 'password', 'title', 'content', 'author', 'excerpt', 'featured_media', 'comment_status', 'ping_status', 'sticky', 'template', 'format', 'meta', 'categories', 'tags'];
+            case 'pages': return ['date', 'date_gmt', 'guid', 'id', 'link', 'modified', 'modified_gmt', 'slug', 'status', 'type', 'password', 'title', 'content', 'author', 'excerpt', 'featured_media', 'comment_status', 'ping_status', 'menu_order', 'meta', 'template', 'parent'];
+            case 'categories': return ['name', 'slug', 'parent', 'description', 'display', 'image', 'menu_order', 'count'];
+            case 'shipping_zones': return ['name', 'order'];
+            case 'taxes': return ['country', 'state', 'postcode', 'city', 'rate', 'name', 'priority', 'compound', 'shipping', 'order', 'class'];
+            case 'coupons': return ['code', 'amount', 'date_created', 'date_created_gmt', 'date_modified', 'date_modified_gmt', 'discount_type', 'description', 'date_expires', 'date_expires_gmt', 'usage_count', 'individual_use', 'product_ids', 'excluded_product_ids', 'usage_limit', 'usage_limit_per_user', 'limit_usage_to_x_items', 'free_shipping', 'product_categories', 'excluded_product_categories', 'exclude_sale_items', 'minimum_amount', 'maximum_amount', 'email_restrictions', 'used_by', 'meta_data'];
+            case 'store_settings': return ['siteTitle', 'adminEmail', 'address1', 'city', 'country', 'state', 'zip', 'timezone', 'weightUnit', 'currency', 'currencyFormat'];
         }
         return [];
     }
+
 }

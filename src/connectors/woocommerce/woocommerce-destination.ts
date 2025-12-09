@@ -6,12 +6,19 @@ export class WooCommerceDestination implements IDestinationConnector {
     private client: AxiosInstance | null = null;
     private wpClient: AxiosInstance | null = null;
 
-    constructor(private url: string, private consumerKey: string, private consumerSecret: string) {
-    }
+    constructor(
+        private url: string, 
+        private consumerKey: string, 
+        private consumerSecret: string,
+        private wpUser?: string,
+        private wpAppPassword?: string
+    ) {}
 
     async connect(): Promise<void> {
         // Remove protocol if present to avoid double https:// or missing protocol
         const cleanUrl = this.url.replace(/^https?:\/\//, '');
+        
+        // WooCommerce Client (WC V3)
         this.client = axios.create({
             baseURL: `https://${cleanUrl}/wp-json/wc/v3`,
             params: {
@@ -19,26 +26,29 @@ export class WooCommerceDestination implements IDestinationConnector {
                 consumer_secret: this.consumerSecret
             },
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                'User-Agent': 'UniversalMigrationTool/1.0',
+                'Content-Type': 'application/json'
             }
         });
         
-        // Initialize WP Client (for Posts, Pages)
+        // Initialize WP Client (for Posts, Pages, Settings)
+        // Use WP App Password if provided, otherwise fallback to Consumer Key (param based) 
+        // Note: WP REST API supports Basic Auth with App Passwords. Consumer Keys also work for some endpoints if query params are accepted, 
+        // but WP-API usually prefers Basic Auth or OAuth.
+        
+        const wpAuthHeaders: any = {
+            'User-Agent': 'UniversalMigrationTool/1.0',
+            'Content-Type': 'application/json'
+        };
+
+        if (this.wpUser && this.wpAppPassword) {
+            const token = Buffer.from(`${this.wpUser}:${this.wpAppPassword}`).toString('base64');
+            wpAuthHeaders['Authorization'] = `Basic ${token}`;
+        }
+
         this.wpClient = axios.create({
             baseURL: `https://${cleanUrl}/wp-json/wp/v2`,
-            params: {
-                // WP API typically uses Basic Auth or specific plugins for writing. 
-                // Re-using WC keys usually works if user has permissions, 
-                // but strictly WP API uses Application Passwords or Cookie/Nonce.
-                // For this tool, we assume Basic Auth via WC keys often bridges or same user context.
-                // If not, we might need separate auth. 
-                // Many setups with consumer_key/secret query params also authenticate for WP endpoints if plugins enable it.
-                consumer_key: this.consumerKey,
-                consumer_secret: this.consumerSecret
-            },
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
+            headers: wpAuthHeaders
         });
 
         try {
@@ -406,35 +416,48 @@ export class WooCommerceDestination implements IDestinationConnector {
         if (!this.client || !this.wpClient) throw new Error('Not connected');
 
         try {
-            // 1. WooCommerce Settings (Currency, Weight Unit)
-            // Currency
-            if (settings.currency) {
-                try {
-                    await this.client.put('/settings/general/woocommerce_currency', { value: settings.currency });
-                } catch (e) { console.warn('Failed to set WC currency', e); }
-            }
-            // Weight Unit
-            if (settings.weightUnit) {
-                try {
-                   await this.client.put('/settings/products/woocommerce_weight_unit', { value: settings.weightUnit });
-                } catch (e) { console.warn('Failed to set WC weight unit', e); }
+            // 1. WooCommerce Settings
+            const updates = [
+                { key: 'woocommerce_currency', val: settings.currency },
+                { key: 'woocommerce_weight_unit', val: settings.weightUnit },
+                { key: 'woocommerce_store_address', val: settings.address1 },
+                { key: 'woocommerce_store_city', val: settings.city },
+                { key: 'woocommerce_store_postcode', val: settings.zip },
+                { key: 'woocommerce_currency_pos', val: settings.currencyFormat }
+            ];
+
+            for (const { key, val } of updates) {
+                if (val) {
+                    try {
+                        await this.client.put(`/settings/general/${key}`, { value: val });
+                    } catch (e) { 
+                        // console.warn(`Failed to set WC setting ${key}`, e); 
+                    }
+                }
             }
 
-            // 2. WordPress Settings (Timezone, Date Format) -> Requires wpClient
-            // The /wp/v2/settings endpoint allows updating core settings.
-            const wpSettings: any = {};
-            if (settings.timezone) {
-                // WordPress uses 'timezone_string' or 'gmt_offset'
-                wpSettings.timezone_string = settings.timezone;
+            // Special handling for Country:State
+            if (settings.country) {
+                let countryValue = settings.country;
+                if (settings.state) {
+                    countryValue += `:${settings.state}`;
+                }
+                try {
+                     await this.client.put('/settings/general/woocommerce_default_country', { value: countryValue });
+                } catch (e) {}
             }
-            // Add other WP mappings if needed (e.g. date_format, time_format)
+
+            // 2. WordPress Settings (Timezone, Title, Email)
+            const wpSettings: any = {};
+            if (settings.timezone) wpSettings.timezone_string = settings.timezone;
+            if (settings.siteTitle) wpSettings.title = settings.siteTitle;
+            if (settings.adminEmail) wpSettings.email = settings.adminEmail;
 
             if (Object.keys(wpSettings).length > 0) {
                 try {
                     await this.wpClient.post('/settings', wpSettings);
                 } catch (e: any) {
                     console.warn('Failed to set WP settings', e.response?.data || e.message);
-                    // Don't fail the whole migration for this, just warn
                 }
             }
 
@@ -512,9 +535,8 @@ export class WooCommerceDestination implements IDestinationConnector {
                 endpoint = '/coupons?per_page=1';
                 break;
             case 'store_settings':
-                standardFields.push('currency', 'weightUnit', 'timezone');
-                // Store settings don't have a single endpoint for list, so we might skip dynamic fetch or point to general settings
-                endpoint = '/settings/general/woocommerce_currency' // Dummy endpoint to satisfy variable, or handle gracefully
+                standardFields.push('siteTitle', 'adminEmail', 'address1', 'city', 'country', 'state', 'zip', 'timezone', 'weightUnit', 'currency', 'currencyFormat');
+                endpoint = '/settings/general/woocommerce_currency' 
                 break;
         }
 

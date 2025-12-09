@@ -68,12 +68,24 @@ export class MigrationManager {
              source = new ShopifySource(project.config.source.url, project.config.source.auth.token); // Access token handling might vary
         } else if (project.sourceType === 'woocommerce') {
              const { WooCommerceSource } = require('../connectors/woocommerce/woocommerce-source');
-             source = new WooCommerceSource(project.config.source.url, project.config.source.auth.key, project.config.source.auth.secret);
+             source = new WooCommerceSource(
+                 project.config.source.url, 
+                 project.config.source.auth.key, 
+                 project.config.source.auth.secret,
+                 project.config.source.auth.wpUser,
+                 project.config.source.auth.wpAppPassword
+             );
         }
 
         if (project.destType === 'woocommerce') {
              const { WooCommerceDestination } = require('../connectors/woocommerce/woocommerce-destination');
-             dest = new WooCommerceDestination(project.config.destination.url, project.config.destination.auth.key, project.config.destination.auth.secret);
+             dest = new WooCommerceDestination(
+                 project.config.destination.url, 
+                 project.config.destination.auth.key, 
+                 project.config.destination.auth.secret,
+                 project.config.destination.auth.wpUser,
+                 project.config.destination.auth.wpAppPassword
+             );
         } else if (project.destType === 'shopify') {
              const { ShopifyDestination } = require('../connectors/shopify/shopify-destination');
              dest = new ShopifyDestination(project.config.destination.url, project.config.destination.auth.token);

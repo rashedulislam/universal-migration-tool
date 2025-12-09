@@ -321,6 +321,15 @@ export class ShopifySource implements ISourceConnector {
         const query = `
             query {
                 shop {
+                    name
+                    email
+                    billingAddress {
+                        address1
+                        city
+                        province
+                        country
+                        zip
+                    }
                     currencyCode
                     timezoneAbbreviation
                     ianaTimezone
@@ -334,6 +343,13 @@ export class ShopifySource implements ISourceConnector {
         const response = await this.client.request(query);
         const shop = response.data?.shop;
         return {
+            siteTitle: shop?.name,
+            adminEmail: shop?.email,
+            address1: shop?.billingAddress?.address1,
+            city: shop?.billingAddress?.city,
+            state: shop?.billingAddress?.province,
+            country: shop?.billingAddress?.country,
+            zip: shop?.billingAddress?.zip,
             currency: shop?.currencyCode || 'USD',
             timezone: shop?.ianaTimezone || 'UTC',
             weightUnit: shop?.weightUnit?.toLowerCase() || 'kg',
@@ -1039,7 +1055,7 @@ export class ShopifySource implements ISourceConnector {
             case 'coupons':
                 return ['code', 'amount', 'discountType', 'description', 'dateExpires', 'usageLimit'];
             case 'store_settings':
-                return ['currency', 'timezone', 'weightUnit', 'currencyFormat'];
+                return ['siteTitle', 'adminEmail', 'address1', 'city', 'country', 'state', 'zip', 'currency', 'weightUnit', 'timezone', 'currencyFormat'];
             default:
                 return [];
         }

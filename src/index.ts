@@ -1,3 +1,7 @@
+/**
+ * DEPRECATED: This CLI script is verified outdated. Please use the server-based migration flow.
+ */
+/*
 import 'dotenv/config';
 import { MigrationManager } from './core/migration-manager';
 import { ShopifySource } from './connectors/shopify/shopify-source';
@@ -30,3 +34,4 @@ async function main() {
 }
 
 main().catch(console.error);
+*/

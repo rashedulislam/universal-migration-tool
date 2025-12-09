@@ -216,10 +216,17 @@ export interface UniversalOrder {
 }
 
 export interface UniversalStoreSettings {
-    currency: string;     // e.g. 'USD'
-    timezone: string;     // e.g. 'America/New_York'
-    weightUnit: string;   // e.g. 'kg', 'lb'
-    currencyFormat?: string; // e.g. '${{amount}}'
+    currency?: string;     // e.g. 'USD'
+    timezone?: string;     // e.g. 'America/New_York'
+    weightUnit?: string;   // e.g. 'kg', 'lb'
+    currencyFormat?: string; // e.g. '${{amount}}' or 'left', 'right'
+    siteTitle?: string;
+    adminEmail?: string;
+    address1?: string;
+    city?: string;
+    country?: string;
+    state?: string;
+    zip?: string;
 }
 
 export interface ISourceConnector {

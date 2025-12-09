@@ -12,7 +12,7 @@ interface SyncedItem {
 
 export function DataViewer() {
   const { projectId } = useParams();
-  const [activeTab, setActiveTab] = useState<'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons' | 'store_settings'>('products');
   const [items, setItems] = useState<SyncedItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -143,6 +143,9 @@ export function DataViewer() {
       case 'coupons': return [
         'code', 'amount', 'discountType', 'description', 'dateExpires', 'usageLimit', 'usageLimitPerUser', 'minimumAmount', 'metafields'
       ];
+      case 'store_settings': return [
+        'siteTitle', 'adminEmail', 'address1', 'city', 'country', 'state', 'zip', 'currency', 'weightUnit', 'timezone', 'currencyFormat'
+      ];
       default: return ['id'];
     }
   };
@@ -196,7 +199,7 @@ export function DataViewer() {
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-gray-700 overflow-x-auto">
-        {['products', 'customers', 'orders', 'posts', 'pages', 'categories', 'shipping_zones', 'taxes', 'coupons'].map((entity) => (
+        {['products', 'customers', 'orders', 'posts', 'pages', 'categories', 'shipping_zones', 'taxes', 'coupons', 'store_settings'].map((entity) => (
           <button
             key={entity}
             onClick={() => { setActiveTab(entity as any); setPage(1); }}

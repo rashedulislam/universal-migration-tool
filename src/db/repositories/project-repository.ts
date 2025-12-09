@@ -100,50 +100,58 @@ export class ProjectRepository {
      * Update project
      */
     updateProject(id: string, updates: Partial<Project>): Project | null {
+        // console.log(`Updating project ${id}`, JSON.stringify(updates, null, 2)); // Debug log
         const existing = this.getProjectById(id);
         if (!existing) return null;
 
-        const transaction = db.transaction(() => {
-            // Update configs if provided
-            if (updates.config) {
-                if (updates.config.source) {
-                    const encryptedAuth = encryptObject(updates.config.source.auth);
-                    statements.insertConfig.run(
-                        id,
-                        'source',
-                        updates.config.source.url,
-                        encryptedAuth
-                    );
+        try {
+            const transaction = db.transaction(() => {
+                // Update configs if provided
+                if (updates.config) {
+                    if (updates.config.source) {
+                        // console.log('Encrypting source auth:', updates.config.source.auth);
+                        const encryptedAuth = encryptObject(updates.config.source.auth || {});
+                        statements.insertConfig.run(
+                            id,
+                            'source',
+                            updates.config.source.url || '',
+                            encryptedAuth
+                        );
+                    }
+                    if (updates.config.destination) {
+                        // console.log('Encrypting dest auth:', updates.config.destination.auth);
+                        const encryptedAuth = encryptObject(updates.config.destination.auth || {});
+                        statements.insertConfig.run(
+                            id,
+                            'destination',
+                            updates.config.destination.url || '',
+                            encryptedAuth
+                        );
+                    }
                 }
-                if (updates.config.destination) {
-                    const encryptedAuth = encryptObject(updates.config.destination.auth);
-                    statements.insertConfig.run(
-                        id,
-                        'destination',
-                        updates.config.destination.url,
-                        encryptedAuth
-                    );
+
+                // Update mappings if provided
+                if (updates.mapping) {
+                    for (const [entity, config] of Object.entries(updates.mapping)) {
+                        statements.insertMapping.run(
+                            id,
+                            entity,
+                            config.enabled ? 1 : 0,
+                            JSON.stringify(config.fields)
+                        );
+                    }
                 }
-            }
 
-            // Update mappings if provided
-            if (updates.mapping) {
-                for (const [entity, config] of Object.entries(updates.mapping)) {
-                    statements.insertMapping.run(
-                        id,
-                        entity,
-                        config.enabled ? 1 : 0,
-                        JSON.stringify(config.fields)
-                    );
-                }
-            }
+                // Update timestamp
+                statements.updateProjectTimestamp.run(id);
+            });
 
-            // Update timestamp
-            statements.updateProjectTimestamp.run(id);
-        });
-
-        transaction();
-        return this.getProjectById(id);
+            transaction();
+            return this.getProjectById(id);
+        } catch (error) {
+            console.error('Error updating project:', error);
+            throw error;
+        }
     }
 
     /**

@@ -221,8 +221,12 @@ export function SettingsPage() {
     try {
       await axios.put(`http://localhost:3001/api/projects/${projectId}`, project);
       setMessage({ type: 'success', text: 'Settings saved successfully!' });
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Failed to save settings.' });
+    } catch (error: any) {
+      console.error('Save failed:', error);
+      setMessage({ 
+        type: 'error', 
+        text: error.response?.data?.message || error.message || 'Failed to save settings.' 
+      });
     } finally {
       setSaving(false);
     }
@@ -283,6 +287,30 @@ export function SettingsPage() {
                       className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-blue-500"
                     />
                   </div>
+                  <div className="border-t border-gray-700 pt-4 mt-4">
+                    <h4 className="text-sm font-semibold text-gray-300 mb-3">WordPress API (Optional)</h4>
+                    <p className="text-xs text-gray-500 mb-3">Required for migrating Store Settings (Timezone, etc) and ensuring Posts/Pages access.</p>
+                    <div className="mb-3">
+                        <label className="block text-sm font-medium text-gray-400 mb-1">WP Username / Email</label>
+                        <input
+                            type="text"
+                            value={project.config.source.auth.wpUser || ''}
+                            onChange={e => setProject({ ...project, config: { ...project.config, source: { ...project.config.source, auth: { ...project.config.source.auth, wpUser: e.target.value } } } })}
+                            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-blue-500"
+                            placeholder="user@example.com"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-400 mb-1">WP Application Password</label>
+                        <input
+                            type="password"
+                            value={project.config.source.auth.wpAppPassword || ''}
+                            onChange={e => setProject({ ...project, config: { ...project.config, source: { ...project.config.source, auth: { ...project.config.source.auth, wpAppPassword: e.target.value } } } })}
+                            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-blue-500"
+                            placeholder="xxxx xxxx xxxx xxxx"
+                        />
+                    </div>
+                  </div>
                 </>
               )}
             </div>
@@ -333,6 +361,30 @@ export function SettingsPage() {
                       onChange={e => setProject({ ...project, config: { ...project.config, destination: { ...project.config.destination, auth: { ...project.config.destination.auth, secret: e.target.value } } } })}
                       className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-purple-500"
                     />
+                  </div>
+                  <div className="border-t border-gray-700 pt-4 mt-4">
+                    <h4 className="text-sm font-semibold text-gray-300 mb-3">WordPress API (Optional)</h4>
+                    <p className="text-xs text-gray-500 mb-3">Required for migrating Store Settings (Timezone, etc) and ensuring Posts/Pages access.</p>
+                    <div className="mb-3">
+                        <label className="block text-sm font-medium text-gray-400 mb-1">WP Username / Email</label>
+                        <input
+                            type="text"
+                            value={project.config.destination.auth.wpUser || ''}
+                            onChange={e => setProject({ ...project, config: { ...project.config, destination: { ...project.config.destination, auth: { ...project.config.destination.auth, wpUser: e.target.value } } } })}
+                            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-purple-500"
+                            placeholder="user@example.com"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-400 mb-1">WP Application Password</label>
+                        <input
+                            type="password"
+                            value={project.config.destination.auth.wpAppPassword || ''}
+                            onChange={e => setProject({ ...project, config: { ...project.config, destination: { ...project.config.destination, auth: { ...project.config.destination.auth, wpAppPassword: e.target.value } } } })}
+                            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white outline-none focus:border-purple-500"
+                            placeholder="xxxx xxxx xxxx xxxx"
+                        />
+                    </div>
                   </div>
                 </>
               )}
