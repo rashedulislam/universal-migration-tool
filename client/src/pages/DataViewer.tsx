@@ -189,11 +189,42 @@ export function DataViewer() {
       )}
 
       {message && (
-        <div className={`p-4 rounded-lg flex items-center gap-2 ${
-          message.type === 'success' ? 'bg-green-900/50 text-green-400 border border-green-800' : 'bg-red-900/50 text-red-400 border border-red-800'
+        <div className={`p-4 rounded-lg flex items-start gap-3 shadow-lg transition-all ${
+          message.type === 'success' 
+            ? 'bg-gradient-to-r from-green-900/80 to-green-900/40 text-green-200 border border-green-700/50' 
+            : message.text.includes('Permission Missing') 
+                ? 'bg-gradient-to-r from-orange-900/80 to-orange-900/40 text-orange-200 border border-orange-700/50'
+                : 'bg-gradient-to-r from-red-900/80 to-red-900/40 text-red-200 border border-red-700/50'
         }`}>
-          {message.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
-          {message.text}
+          {message.type === 'success' ? (
+              <CheckCircle className="shrink-0 mt-0.5 text-green-400" size={24} />
+          ) : message.text.includes('Permission Missing') ? (
+              <AlertCircle className="shrink-0 mt-0.5 text-orange-400" size={24} />
+          ) : (
+              <AlertCircle className="shrink-0 mt-0.5 text-red-400" size={24} />
+          )}
+          
+          <div className="flex-1">
+            {message.text.includes('Permission Missing') ? (
+                <div>
+                    <h3 className="font-semibold text-lg text-orange-100 mb-1">Permission Required</h3>
+                    <p className="text-orange-200/90 leading-relaxed">
+                        {message.text.split('Permission Missing: ')[1] || message.text}
+                    </p>
+                    <div className="mt-3 text-sm bg-black/20 p-3 rounded border border-orange-500/20">
+                        <strong className="block mb-1 text-orange-300">How to fix:</strong>
+                        <ol className="list-decimal pl-4 space-y-1 text-orange-200/80">
+                            <li>Go to Shopify Admin &gt; Settings &gt; Apps and sales channels</li>
+                            <li>Select your custom app &gt; Configuration &gt; Admin API integration</li>
+                            <li>Edit and enable the missing scope</li>
+                            <li>Click Save</li>
+                        </ol>
+                    </div>
+                </div>
+            ) : (
+                <div className="font-medium leading-relaxed">{message.text}</div>
+            )}
+          </div>
         </div>
       )}
 

@@ -859,6 +859,12 @@ export class ShopifySource implements ISourceConnector {
                                             zone {
                                                 id
                                                 name
+                                                countries {
+                                                    code
+                                                }
+                                                provinces {
+                                                    code
+                                                }
                                             }
                                             methodDefinitions(first: 10) {
                                                 edges {
@@ -897,17 +903,27 @@ export class ShopifySource implements ISourceConnector {
                 p.node.profileLocationGroups.forEach((group: any) => {
                     group.locationGroupZones.edges.forEach((z: any) => {
                         const zoneNode = z.node.zone;
-                        const methods = z.node.methodDefinitions.edges.map((m: any) => ({
-                            originalId: m.node.id.split('/').pop(),
-                            title: m.node.name,
-                            cost: parseFloat(m.node.rateProvider?.price?.amount || '0'),
-                            enabled: true
-                        }));
+                        const methods = z.node.methodDefinitions.edges.map((m: any) => {
+                            const cost = parseFloat(m.node.rateProvider?.price?.amount || '0');
+                            const isFree = cost === 0;
+                            
+                            return {
+                                originalId: m.node.id.split('/').pop(),
+                                title: m.node.name,
+                                cost: cost,
+                                enabled: true,
+                                methodType: isFree ? 'free_shipping' : 'flat_rate'
+                            };
+                        });
+
+                        const locations: string[] = [];
+                        zoneNode.countries?.forEach((c: any) => locations.push(c.code));
+                        zoneNode.provinces?.forEach((p: any) => locations.push(p.code));
 
                         zones.push({
                             originalId: zoneNode.id.split('/').pop(),
                             name: zoneNode.name,
-                            countries: [], // Countries mapping in GQL is deep, skipping for now
+                            countries: locations,
                             methods: methods,
                             originalData: z.node
                         });
@@ -942,8 +958,8 @@ export class ShopifySource implements ISourceConnector {
 
         while (hasNextPage) {
             const query = `
-                query getPriceRules($cursor: String) {
-                    priceRules(first: 50, after: $cursor) {
+                query getDiscounts($cursor: String) {
+                    discountNodes(first: 50, after: $cursor) {
                         pageInfo {
                             hasNextPage
                             endCursor
@@ -951,37 +967,47 @@ export class ShopifySource implements ISourceConnector {
                         edges {
                             node {
                                 id
-                                title
-                                valueV2 {
-                                    ... on MoneyV2 {
-                                        amount
+                                discount {
+                                    ... on DiscountCodeBasic {
+                                        title
+                                        startsAt
+                                        endsAt
+                                        codes(first: 10) {
+                                            edges {
+                                                node {
+                                                    code
+                                                }
+                                            }
+                                        }
+                                        customerGets {
+                                            value {
+                                                ... on DiscountPercentage {
+                                                    percentage
+                                                }
+                                                ... on DiscountAmount {
+                                                    amount {
+                                                        amount
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        usageLimit
                                     }
-                                    ... on PricingPercentageValue {
-                                        percentage
-                                    }
-                                }
-                                targetType
-                                startsAt
-                                endsAt
-                                usageLimit
-                                oncePerCustomer
-                                prerequisiteSubtotalRange {
-                                    greaterThanOrEqualTo {
-                                        amount
-                                    }
-                                }
-                                entitledProductIds
-                                entitledVariantIds
-                                customerSelection {
-                                    ... on PriceRuleCustomerSelection {
-                                        forAllCustomers
-                                    }
-                                }
-                                discountCodes(first: 10) {
-                                    edges {
-                                        node {
-                                            code
-                                            usageCount
+                                    ... on DiscountAutomaticBasic {
+                                        title
+                                        startsAt
+                                        endsAt
+                                        customerGets {
+                                            value {
+                                                ... on DiscountPercentage {
+                                                    percentage
+                                                }
+                                                ... on DiscountAmount {
+                                                    amount {
+                                                        amount
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -995,19 +1021,66 @@ export class ShopifySource implements ISourceConnector {
             try {
                 response = await this.client.request(query, { variables: { cursor: endCursor } });
             } catch (error: any) {
-                if (error.graphQLErrors) {
-                    const messages = error.graphQLErrors.map((e: any) => e.message).join(', ');
-                    throw new Error(messages);
+                console.log('--- DEBUG COUPON ERROR ---');
+                // Log all properties including non-enumerable
+                console.log(JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+                
+                // Try to find the inner errors
+                const gqlErrors = error.graphQLErrors || error.response?.errors || error.cause?.graphQLErrors;
+                
+                if (gqlErrors) {
+                    const messages = Array.isArray(gqlErrors) 
+                        ? gqlErrors.map((e: any) => e.message).join(', ') 
+                        : JSON.stringify(gqlErrors);
+                    throw new Error(`GraphQL Validation Error: ${messages}`);
                 }
-                throw error;
+                
+                // Fallback: Dump the whole error into the message so the user sees it
+                throw new Error(`Deep GraphQL Error: ${error.message} \n Details: ${JSON.stringify(error, null, 2)}`);
             }
             
             if (response?.errors) {
                 const errors = Array.isArray(response.errors) ? response.errors : [response.errors];
-                throw new Error(errors.map((e: any) => e.message || JSON.stringify(e)).join(', '));
+                
+                // Check for Access Denied specifically
+                // The error structure might be nested: error.graphQLErrors OR error.extensions
+                const accessDenied = errors.find((e: any) => {
+                    if (e.extensions?.code === 'ACCESS_DENIED') return true;
+                    if (e.graphQLErrors) {
+                        return e.graphQLErrors.some((ge: any) => ge.extensions?.code === 'ACCESS_DENIED' || ge.message.includes('Access denied'));
+                    }
+                    return false;
+                });
+
+                if (accessDenied) {
+                    // Try to get the required access scope hint
+                    let hint = 'read_discounts';
+                    let rawHint = '';
+                    
+                    if (accessDenied.extensions?.requiredAccess) rawHint = accessDenied.extensions.requiredAccess;
+                    else if (accessDenied.graphQLErrors) {
+                         const nested = accessDenied.graphQLErrors.find((ge: any) => ge.extensions?.code === 'ACCESS_DENIED');
+                         if (nested?.extensions?.requiredAccess) rawHint = nested.extensions.requiredAccess;
+                    }
+
+                    // Extract just the scope name if possible (e.g. from "Apps must have `read_discounts` access scope")
+                    const match = rawHint.match(/`([^`]+)`/);
+                    if (match) {
+                        hint = match[1];
+                    } else if (rawHint) {
+                        hint = rawHint;
+                    }
+
+                    // Friendly error message
+                    throw new Error(`Permission Missing: Your Shopify Admin Token is missing the '${hint}' scope. Please enable it in your Shopify App settings.`);
+                }
+
+                // For other errors, still useful to see them, but maybe less shouting
+                console.warn('Coupon Sync Error (GraphQL):', JSON.stringify(errors, null, 2));
+                throw new Error(`Shopify API Error: ${errors[0]?.message || 'Unknown error'}`);
             }
 
-            const data = response.data?.priceRules;
+            const data = response.data?.discountNodes;
             const nodes = data?.edges.map((edge: any) => edge.node) || [];
             
             allCoupons = [...allCoupons, ...nodes];
@@ -1016,59 +1089,63 @@ export class ShopifySource implements ISourceConnector {
                 onProgress(50); // Indeterminate
             }
 
-            hasNextPage = data?.pageInfo?.hasNextPage || false;
-            endCursor = data?.pageInfo?.endCursor || null;
+            if (data?.pageInfo?.hasNextPage) {
+                endCursor = data.pageInfo.endCursor;
+            } else {
+                hasNextPage = false;
+            }
         }
 
-        if (onProgress) onProgress(100);
-
-        // Map PriceRules to Coupons
-        const coupons: UniversalCoupon[] = [];
-        allCoupons.forEach(rule => {
-            const isShipping = rule.targetType === 'SHIPPING_LINE';
-            const isPercentage = !!rule.valueV2?.percentage;
+        // Map Shopify Discounts to Universal Coupons
+        return allCoupons.map(node => {
+            const discount = node.discount || {};
             
-            // If it's a shipping rule with 100% off, it's free shipping
-            const freeShipping = isShipping && isPercentage && rule.valueV2.percentage === 100.0;
-            
-            let discountType: UniversalCoupon['discountType'] = 'fixed_cart';
-            if (isPercentage) {
-                discountType = 'percent';
-            } else if (rule.targetType === 'LINE_ITEM') {
-                // Shopify applies to line items, closest WC match is fixed_product or fixed_cart depending on implementation
-                // We'll default to fixed_cart for simple amount off, but logic differs.
-                discountType = 'fixed_cart'; 
+            // Extract codes
+            let code = '';
+            if (discount.codes?.edges?.length > 0) {
+                code = discount.codes.edges[0].node.code;
+            } else if (discount.title) {
+                // For automatic discounts or fallback
+                code = discount.title.replace(/\s+/g, '_').toUpperCase(); 
             }
 
-            const amount = isPercentage ? rule.valueV2.percentage : parseFloat(rule.valueV2?.amount || '0');
-            const minAmount = parseFloat(rule.prerequisiteSubtotalRange?.greaterThanOrEqualTo?.amount || '0');
-
-            // Product IDs (Legacy array of IDs)
-            let productIds: string[] = [];
-            if (rule.entitledProductIds) {
-                productIds = rule.entitledProductIds.map((id: string) => id.split('/').pop() || id);
+            // Extract value
+            let amount = 0;
+            let type: UniversalCoupon['discountType'] = 'fixed_cart'; // default
+            
+            const valueObj = discount.customerGets?.value;
+            if (valueObj) {
+                if (valueObj.percentage !== undefined) {
+                    type = 'percent';
+                    amount = parseFloat(valueObj.percentage) * 100; // WC expects percent? Actually strict value usually. wait.
+                    // WC expects '10' for 10% usually. Graphql returns 0.1? No, usually 0.1 or 10.0 depending on API.
+                    // Shopify returns 0.15 for 15% usually.
+                    amount = valueObj.percentage * 100; 
+                } else if (valueObj.amount) {
+                    type = 'fixed_cart';
+                    amount = parseFloat(valueObj.amount.amount);
+                }
             }
 
-            rule.discountCodes?.edges.forEach((codeEdge: any) => {
-                coupons.push({
-                    originalId: rule.id.split('/').pop(),
-                    code: codeEdge.node.code,
-                    amount: amount,
-                    discountType: discountType,
-                    description: rule.title,
-                    dateExpires: rule.endsAt ? new Date(rule.endsAt) : undefined,
-                    usageLimit: rule.usageLimit,
-                    usageLimitPerUser: rule.oncePerCustomer ? 1 : undefined,
-                    minimumAmount: minAmount > 0 ? minAmount : undefined,
-                    freeShipping: freeShipping,
-                    productIds: productIds.length > 0 ? productIds : undefined,
-                    usageCount: codeEdge.node.usageCount,
-                    originalData: rule
-                });
-            });
+            // Usage Limits
+            const usageLimit = discount.usageLimit;
+            // usageLimitPerUser not directly on Basic interface easily, skipping for simplicity
+
+            return {
+                originalId: node.id.split('/').pop(),
+                code: code,
+                amount: amount,
+                discountType: type,
+                description: discount.title,
+                dateExpires: discount.endsAt ? new Date(discount.endsAt) : undefined, 
+                usageLimit: usageLimit,
+                usageLimitPerUser: undefined, 
+                minimumAmount: undefined, 
+                freeShipping: false, 
+                productIds: [], 
+                originalData: node
+            };
         });
-
-        return coupons;
     }
 
     async getExportFields(entityType: 'products' | 'customers' | 'orders' | 'posts' | 'pages' | 'categories' | 'shipping_zones' | 'taxes' | 'coupons' | 'store_settings'): Promise<string[]> {

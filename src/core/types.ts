@@ -149,6 +149,8 @@ export interface UniversalShippingMethod {
     cost?: number;
     enabled: boolean;
     methodTitle?: string; // e.g. "Flat Rate"
+    methodType?: 'flat_rate' | 'free_shipping' | 'weight_based' | 'price_based' | 'other';
+    minOrderAmount?: number;
     originalData?: any;
 }
 

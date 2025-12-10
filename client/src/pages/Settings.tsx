@@ -210,6 +210,13 @@ export function SettingsPage() {
              }
           }
         });
+
+        // Cleanup: Remove fields that are no longer in the destination schema (e.g. read-only fields filtered out by backend)
+        Object.keys(currentFields).forEach(key => {
+            if (!destFields.includes(key)) {
+                delete currentFields[key];
+            }
+        });
         
         newProject.mapping![entity].fields = currentFields;
       });

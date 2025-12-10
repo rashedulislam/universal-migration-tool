@@ -306,17 +306,67 @@ export class WooCommerceDestination implements IDestinationConnector {
                 const zoneRes = await this.client.post('/shipping/zones', wcZone);
                 const newZoneId = zoneRes.data.id;
 
-                // 2. Add Methods (Simplified: just creating one flat rate if enabled in source methods, or skipping detail mapping for now)
+                // 2. Add Locations
+                if (zone.countries && zone.countries.length > 0) {
+                    const locationsPayload = zone.countries.map(loc => {
+                        // Shopify returns 'US-NY' or 'US'. WC expects 'state' with 'US:NY' or 'country' with 'US'
+                        // Actually Shopify returns 'US' (country) or 'US-NY' (province code format varies, GQL usually ISO)
+                        // Let's handle generic ISO 'US' vs 'US-NY' or 'US:NY' detection
+                        // Logic: if code contains - or :, it's likely a state.
+                        
+                        // Shopify typically returns 'US' for country, 'US-NY' for province in API versions, check standard.
+                        // Assuming universal format passed here is 'US' or 'US-NY'
+                        
+                        let type = 'country';
+                        let code = loc;
+
+                        if (loc.includes('-') || loc.includes(':')) {
+                             type = 'state';
+                             // WC expects ':' separator for states usually (e.g. US:NY), ensure format
+                             code = loc.replace('-', ':'); 
+                        }
+
+                        return {
+                            code: code,
+                            type: type
+                        };
+                    });
+
+                    // Update locations in a batch (WC API supports batch update? No, endpoint is /locations usually replace all)
+                    // The endpoint is /shipping/zones/<id>/locations. Posting an array replaces them.
+                    await this.client.post(`/shipping/zones/${newZoneId}/locations`, locationsPayload);
+                }
+
+                // 3. Add Methods (Simplified: just creating one flat rate if enabled in source methods, or skipping detail mapping for now)
                 // WooCommerce methods are separate endpoints /shipping/zones/:id/methods
                 // We will try to add methods if defined
                 for (const method of zone.methods) {
                     if (method.enabled) {
-                        await this.client.post(`/shipping/zones/${newZoneId}/methods`, {
-                            method_id: 'flat_rate', // Defaulting to flat rate as a safe fallback
-                            settings: {
-                                title: method.title,
-                                cost: method.cost?.toString() || '0'
+                        let methodId = 'flat_rate';
+                        let settings: any = {
+                            title: method.title
+                        };
+
+                        if (method.methodType === 'free_shipping') {
+                            methodId = 'free_shipping';
+                            settings.requires = method.minOrderAmount! > 0 ? 'min_amount' : 'either'; // Default to 'either' or specific if min amount exists
+                            if (method.minOrderAmount) {
+                                settings.min_amount = method.minOrderAmount.toString();
                             }
+                        } else {
+                            // Default to flat rate
+                            settings.cost = method.cost?.toString() || '0';
+                        }
+                        
+                        // Map 'local_pickup' if title suggests it (simple heuristic)
+                        if (method.title.toLowerCase().includes('pickup')) {
+                            methodId = 'local_pickup';
+                            settings.cost = method.cost?.toString() || '0';
+                        }
+
+                        await this.client.post(`/shipping/zones/${newZoneId}/methods`, {
+                            method_id: methodId,
+                            settings: settings
                         });
                     }
                 }
@@ -523,7 +573,7 @@ export class WooCommerceDestination implements IDestinationConnector {
                 endpoint = '/products/categories?per_page=1';
                 break;
             case 'shipping_zones':
-                standardFields.push('name', 'order');
+                standardFields.push('name', 'methods', 'countries');
                 endpoint = '/shipping/zones?per_page=1';
                 break;
             case 'taxes':
@@ -559,7 +609,9 @@ export class WooCommerceDestination implements IDestinationConnector {
             const response = await apiClient.get(effectiveEndpoint);
             const items = response.data;
             if (items && items.length > 0) {
-                const dynamicFields = Object.keys(items[0]);
+                const dynamicFields = Object.keys(items[0]).filter(key => 
+                    !['id', '_links', '_embedded', 'slug', 'permalink', 'date_created', 'date_modified', 'date_created_gmt', 'date_modified_gmt'].includes(key)
+                );
                 // Merge and deduplicate
                 return Array.from(new Set([...standardFields, ...dynamicFields]));
             }
