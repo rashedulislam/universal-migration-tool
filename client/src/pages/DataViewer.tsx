@@ -206,7 +206,7 @@ export function DataViewer() {
           
           <div className="flex-1">
             {message.text.includes('Permission Missing') ? (
-                <div>
+                <div className="text-left">
                     <h3 className="font-semibold text-lg text-orange-100 mb-1">Permission Required</h3>
                     <p className="text-orange-200/90 leading-relaxed">
                         {message.text.split('Permission Missing: ')[1] || message.text}
@@ -222,7 +222,7 @@ export function DataViewer() {
                     </div>
                 </div>
             ) : (
-                <div className="font-medium leading-relaxed">{message.text}</div>
+                <div className="font-medium leading-relaxed text-left">{message.text}</div>
             )}
           </div>
         </div>
