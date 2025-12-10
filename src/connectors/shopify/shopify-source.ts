@@ -422,21 +422,13 @@ export class ShopifySource implements ISourceConnector {
                                     country
                                     zip
                                 }
-                                fulfillments(first: 10) {
-                                    edges {
-                                        node {
-                                            trackingCompany
-                                            trackingInfo(first: 1) {
-                                                edges {
-                                                    node {
-                                                        number
-                                                        url
-                                                    }
-                                                }
-                                            }
-                                            status
-                                        }
+                                fulfillments {
+                                    trackingInfo {
+                                        company
+                                        number
+                                        url
                                     }
+                                    status
                                 }
                                 metafields(first: 25) {
                                     edges {
@@ -466,7 +458,43 @@ export class ShopifySource implements ISourceConnector {
 
             if (response?.errors) {
                 const errors = Array.isArray(response.errors) ? response.errors : [response.errors];
-                throw new Error(errors.map((e: any) => e.message || JSON.stringify(e)).join(', '));
+                
+                // Check for Access Denied specifically
+                const accessDenied = errors.find((e: any) => {
+                    if (e.extensions?.code === 'ACCESS_DENIED') return true;
+                    if (e.graphQLErrors) {
+                        return e.graphQLErrors.some((ge: any) => ge.extensions?.code === 'ACCESS_DENIED' || ge.message.includes('Access denied'));
+                    }
+                    return false;
+                });
+
+                if (accessDenied) {
+                    // Try to get the required access scope hint
+                    let hint = 'read_orders';
+                    let rawHint = '';
+                    
+                    if (accessDenied.extensions?.requiredAccess) rawHint = accessDenied.extensions.requiredAccess;
+                    else if (accessDenied.graphQLErrors) {
+                         const nested = accessDenied.graphQLErrors.find((ge: any) => ge.extensions?.code === 'ACCESS_DENIED');
+                         if (nested?.extensions?.requiredAccess) rawHint = nested.extensions.requiredAccess;
+                    }
+
+                    // Extract just the scope name if possible
+                    const match = rawHint.match(/`([^`]+)`/);
+                    if (match) {
+                        hint = match[1];
+                    } else if (rawHint) {
+                        hint = rawHint;
+                    }
+
+                    // Friendly error message
+                    throw new Error(`Permission Missing: Your Shopify Admin Token is missing the '${hint}' scope. Please enable it in your Shopify App settings.`);
+                }
+
+                console.warn('Order Sync Error (GraphQL):', JSON.stringify(errors, null, 2));
+                // Temporary: Dump full error for debugging
+                const errorDetails = errors.map((e: any) => `${e.message} ${e.path ? '(Path: ' + e.path.join('.') + ')' : ''}`).join(' | ');
+                throw new Error(`Shopify API Error: ${errorDetails}`);
             }
 
             const data = response.data?.orders;
@@ -508,11 +536,11 @@ export class ShopifySource implements ISourceConnector {
                 country: order.billingAddress.country,
                 zip: order.billingAddress.zip
             } : undefined,
-            fulfillments: order.fulfillments?.edges.map((f: any) => ({
-                trackingCompany: f.node.trackingCompany,
-                trackingNumber: f.node.trackingInfo?.edges[0]?.node?.number,
-                trackingUrl: f.node.trackingInfo?.edges[0]?.node?.url,
-                status: f.node.status
+            fulfillments: order.fulfillments?.map((f: any) => ({
+                trackingCompany: f.trackingInfo?.[0]?.company,
+                trackingNumber: f.trackingInfo?.[0]?.number,
+                trackingUrl: f.trackingInfo?.[0]?.url,
+                status: f.status
             })),
             metafields: order.metafields?.edges.reduce((acc: any, edge: any) => {
                 acc[`${edge.node.namespace}.${edge.node.key}`] = edge.node.value;
